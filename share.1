@@ -1,0 +1,62 @@
+.TH SHARE 1 "January 2026" "share utility" "User Commands"
+.SH NAME
+share \- sync files between local filesystem and a shared directory
+.SH SYNOPSIS
+.B share
+.I command
+.RI [ file ]
+.SH DESCRIPTION
+.B share
+is a utility to synchronize files between a local directory tree and a shared directory, preserving relative paths. It is useful for sharing files between different users or systems.
+
+.SH CONFIGURATION
+The local root (SHARE_PATH) and shared root (SHARED_ROOT) can be customized:
+.TP
+~/.sharepath
+Absolute path to the local root directory. Only files under this directory are managed.
+.TP
+~/.shareroot
+Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set.
+
+.SH COMMANDS
+.TP
+.B put <file>
+Copy file to shared (always overwrite).
+.TP
+.B push <file>
+Copy to shared only if local is newer.
+.TP
+.B get <file>
+Copy from shared to local (always overwrite).
+.TP
+.B pull <file>
+Copy from shared only if shared is newer.
+.TP
+.B sync <file>
+Sync by copying whichever is newer.
+.TP
+.B check <file>
+Check sync status of file.
+.TP
+.B rm <file>
+Remove file from shared location.
+.TP
+.B status
+Show status of entire shared directory.
+
+.SH EXAMPLES
+.nf
+share put path/to/file.txt
+share push path/to/file.txt
+share check path/to/file.txt
+share status
+.fi
+
+.SH NOTES
+- Only files under SHARE_PATH are managed. Attempts to share files outside this path will be rejected.
+- The mapping preserves the relative path under SHARE_PATH in SHARED_ROOT.
+
+.SH AUTHOR
+William Wu, 2026
+.SH LICENSE
+GPLv2 or later
