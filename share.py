@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Share utility - Sync files between local filesystem and ~/Shared/dump
+Share utility - Sync files between local filesystem and a shared directory.
 
-Change SHARED_ROOT to customize it. It is recommended that the shared
-root can be some location that is accessible to all your OS or Users,
-depending on the purpose.
+You can customize the local root (SHARE_PATH) and shared root (SHARED_ROOT)
+by creating ~/.sharepath and ~/.shareroot files containing the absolute paths.
+Only files under SHARE_PATH are managed; they are mapped to SHARED_ROOT
+preserving their relative path under SHARE_PATH.
 
 Copyright (C) 2026 William Wu
 
@@ -23,6 +24,7 @@ along with this program; if not, write to the Free Software Foundation,
 Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 """
 
+
 import sys
 import os
 from pathlib import Path
@@ -30,17 +32,37 @@ import shutil
 from datetime import datetime
 import argparse
 
-SHARED_ROOT = Path.home() / "Shared" / "dump"
+# Load SHARE_PATH from ~/.sharepath if exists, else None
+def load_path_config(config_file, default=None):
+    try:
+        path = Path.home() / config_file
+        if path.exists():
+            with open(path, 'r') as f:
+                value = f.read().strip()
+                if value:
+                    return Path(value).expanduser().resolve()
+    except Exception:
+        pass
+    return default
+
+SHARE_PATH = load_path_config('.sharepath')
+SHARED_ROOT = load_path_config('.shareroot', Path.home() / "Shared" / "dump")
 
 
 def get_shared_path(local_path):
-    """Convert local path to shared path maintaining full directory structure"""
+    """Convert local path to shared path, preserving relative path under SHARE_PATH"""
     if not local_path:
         return None
     abs_path = Path(local_path).resolve()
-    # Remove leading / to make it relative for joining with SHARED_ROOT
-    relative = str(abs_path).lstrip('/')
-    return SHARED_ROOT / relative
+    if SHARE_PATH:
+        try:
+            rel = abs_path.relative_to(SHARE_PATH)
+        except ValueError:
+            print(f"Error: {local_path} is not under SHARE_PATH ({SHARE_PATH})")
+            return None
+    else:
+        rel = abs_path.name  # fallback: just filename
+    return SHARED_ROOT / rel
 
 
 def format_time(timestamp):
@@ -71,6 +93,8 @@ def cmd_put(local_file):
         return 1
 
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
     shared_path.parent.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(local_path, shared_path)
@@ -87,6 +111,8 @@ def cmd_push(local_file):
         return 1
 
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     # If shared doesn't exist, always push
     if not shared_path.exists():
@@ -112,6 +138,8 @@ def cmd_get(local_file):
     """Copy shared file to local (always overwrite)"""
     local_path = Path(local_file)
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     if not shared_path.exists():
         print(f"Error: File not shared: {local_file}")
@@ -127,6 +155,8 @@ def cmd_pull(local_file):
     """Copy shared file to local only if shared is newer"""
     local_path = Path(local_file)
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     if not shared_path.exists():
         print(f"Error: File not shared: {local_file}")
@@ -156,6 +186,8 @@ def cmd_sync(local_file):
     """Sync by copying whichever version is newer"""
     local_path = Path(local_file)
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     local_exists = file_exists_and_valid(local_path)
     shared_exists = shared_path.exists()
@@ -199,6 +231,8 @@ def cmd_check(local_file):
     """Check the status of a file"""
     local_path = Path(local_file)
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     local_exists = file_exists_and_valid(local_path)
     shared_exists = shared_path.exists()
@@ -254,6 +288,8 @@ def cmd_check(local_file):
 def cmd_remove(local_file):
     """Remove file from shared location"""
     shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
 
     if not shared_path.exists():
         print(f"File not in shared: {local_file}")
@@ -295,7 +331,10 @@ def cmd_status():
 
         # Reconstruct local path
         relative = shared_file.relative_to(SHARED_ROOT)
-        local_file = Path('/') / relative
+        if SHARE_PATH:
+            local_file = SHARE_PATH / relative
+        else:
+            local_file = Path(relative)
 
         if not local_file.exists():
             only_shared.append((local_file, shared_file))
@@ -316,6 +355,7 @@ def cmd_status():
     total = len(synced) + len(need_push) + len(need_pull) + len(only_shared)
 
     print(f"Shared directory: {SHARED_ROOT}")
+    print(f"Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
     print(f"Total files tracked: {total}")
     print()
 
@@ -355,9 +395,15 @@ def cmd_status():
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Share utility - Sync files between local and ~/Shared/dump',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+                description='Share utility - Sync files between local and shared directory',
+                formatter_class=argparse.RawDescriptionHelpFormatter,
+                epilog="""
+Customization:
+    - To set your local root, create ~/.sharepath containing the absolute path.
+    - To set your shared root, create ~/.shareroot containing the absolute path.
+    - Only files under SHARE_PATH are managed; they are mapped to SHARED_ROOT
+        preserving their relative path under SHARE_PATH.
+
 Commands:
   put <file>     Copy file to shared (always overwrite)
   push <file>    Copy to shared only if local is newer
