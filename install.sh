@@ -5,6 +5,11 @@ PIP="pip3"
 
 # Check type and dependencies
 if [ "$SHARE_TYPE" == "python" ]; then
+    # Check if python3 is installed
+    if ! command -v python3 &> /dev/null; then
+        echo "Python3 is not installed. Please install Python3 and try again."
+        exit 1
+    fi
     # Install Python dependencies
     echo "Installing Python dependencies..."
     $PIP install pathlib datetime argparse
