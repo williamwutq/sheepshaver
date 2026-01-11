@@ -84,6 +84,11 @@ def file_exists_and_valid(path):
     return p.exists() and p.is_file()
 
 
+def file_is_newer(time1, time2):
+    """Check if time1 is newer than time2 with 1 second tolerance"""
+    return (time1 - time2) > 1  # 1 second tolerance
+
+
 def cmd_put(local_file):
     """Copy local file to shared (always overwrite)"""
     local_path = Path(local_file)
@@ -125,7 +130,7 @@ def cmd_push(local_file):
     local_mtime = local_path.stat().st_mtime
     shared_mtime = shared_path.stat().st_mtime
 
-    if local_mtime > shared_mtime:
+    if file_is_newer(local_mtime, shared_mtime):
         shutil.copy2(local_path, shared_path)
         print(f"✓ Pushed: {local_file} (local newer)")
         return 0
@@ -165,7 +170,7 @@ def cmd_push_all():
         # Compare modification times
         local_mtime = local_path.stat().st_mtime
         shared_mtime = remote_file.stat().st_mtime
-        if local_mtime > shared_mtime:
+        if file_is_newer(local_mtime, shared_mtime):
             shutil.copy2(local_path, remote_file)
             print(f"✓ Pushed: {local_file} (local newer)")
             count += 1
@@ -215,7 +220,7 @@ def cmd_pull(local_file):
     local_mtime = local_path.stat().st_mtime
     shared_mtime = shared_path.stat().st_mtime
 
-    if shared_mtime > local_mtime:
+    if file_is_newer(shared_mtime, local_mtime):
         shutil.copy2(shared_path, local_path)
         print(f"✓ Pulled: {local_file} (shared newer)")
         return 0
@@ -255,7 +260,7 @@ def cmd_pull_all():
         # Compare modification times
         local_mtime = local_path.stat().st_mtime
         shared_mtime = shared_path.stat().st_mtime
-        if shared_mtime > local_mtime:
+        if file_is_newer(shared_mtime, local_mtime):
             shutil.copy2(shared_path, local_path)
             print(f"✓ Pulled: {local_file} (shared newer)")
             count += 1
@@ -300,11 +305,11 @@ def cmd_sync(local_file):
     local_mtime = local_path.stat().st_mtime
     shared_mtime = shared_path.stat().st_mtime
 
-    if local_mtime > shared_mtime:
+    if file_is_newer(local_mtime, shared_mtime):
         shutil.copy2(local_path, shared_path)
         print(f"✓ Synced: {local_file} → shared (local newer)")
         return 0
-    elif shared_mtime > local_mtime:
+    elif file_is_newer(shared_mtime, local_mtime):
         shutil.copy2(shared_path, local_path)
         print(f"✓ Synced: shared → {local_file} (shared newer)")
         return 0
@@ -357,11 +362,11 @@ def cmd_sync_all():
         local_mtime = local_path.stat().st_mtime
         shared_mtime = shared_path.stat().st_mtime
 
-        if local_mtime > shared_mtime:
+        if file_is_newer(local_mtime, shared_mtime):
             shutil.copy2(local_path, shared_path)
             print(f"✓ Synced: {local_file} → shared (local newer)")
             count += 1
-        elif shared_mtime > local_mtime:
+        elif file_is_newer(shared_mtime, local_mtime):
             shutil.copy2(shared_path, local_path)
             print(f"✓ Synced: shared → {local_file} (shared newer)")
             count += 1
@@ -417,16 +422,14 @@ def cmd_check(local_file):
     print(f"Shared: Modified {shared_time_str}")
     print()
 
-    time_diff = abs(local_mtime - shared_mtime)
-
-    if time_diff < 1:  # Less than 1 second difference
-        print("Status: ✓ Synced")
-    elif local_mtime > shared_mtime:
+    if file_is_newer(local_mtime > shared_mtime):
         print("Status: ⚠ Local is newer")
         print("→ Use 'share push' to update shared")
-    else:
+    elif file_is_newer(shared_mtime > local_mtime):
         print("Status: ⚠ Shared is newer")
         print("→ Use 'share pull' to update local")
+    else:
+        print("Status: ✓ Synced")
 
     return 0
 
@@ -489,14 +492,12 @@ def cmd_status():
         local_mtime = local_file.stat().st_mtime
         shared_mtime = shared_file.stat().st_mtime
 
-        time_diff = abs(local_mtime - shared_mtime)
-
-        if time_diff < 1:
-            synced.append(local_file)
-        elif local_mtime > shared_mtime:
+        if file_is_newer(local_mtime > shared_mtime):
             need_push.append(local_file)
-        else:
+        elif file_is_newer(shared_mtime > local_mtime):
             need_pull.append(local_file)
+        else:
+            synced.append(local_file)
 
     total = len(synced) + len(need_push) + len(need_pull) + len(only_shared)
 
