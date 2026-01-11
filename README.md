@@ -52,16 +52,16 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 ## Usage
 ```
 share list                   # List all files in shared directory.
-share put <file> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
-share push <file> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
+share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
+share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
 share pushall                # Push all local files to shared if local is newer
-share get <file> [...]       # Copy from shared to local (always overwrite).
-share pull <file> [...]      # Copy from shared only if shared is newer. If input is a directory, pull all files under it.
+share get <path> [...]       # Copy from shared to local (always overwrite).
+share pull <path> [...]      # Copy from shared only if shared is newer. If input is a directory, pull all files under it.
 share pullall                # Pull all shared files to local if shared is newer.
-share sync <file> [...]      # Sync by copying whichever is newer. If input is a directory, sync all files under it.
+share sync <path> [...]      # Sync by copying whichever is newer. If input is a directory, sync all files under it.
 share syncall                # Sync all files by copying whichever is newer.
-share check <file> [...]     # Check sync status of file(s). If input is a directory, check all files under it.
-share rm <file> [...]        # Remove file(s) from shared location. If input is a directory, remove all files under it.
+share check <path> [...]     # Check sync status of file(s). If input is a directory, check all files under it.
+share rm <path> [...]        # Remove file(s) from shared location. If input is a directory, remove all files under it.
 share status [dir ...]     # Show status of local directory (or directories). If no dir specified, show status of all tracked files.
 ```
 
