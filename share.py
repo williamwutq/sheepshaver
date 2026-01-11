@@ -31,6 +31,7 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 import argparse
+import fnmatch
 
 # Load SHARE_PATH from ~/.sharepath if exists, else None
 def load_path_config(config_file, default=None):
@@ -89,12 +90,90 @@ def file_is_newer(time1, time2):
     return (time1 - time2) > 1  # 1 second tolerance
 
 
-def cmd_put(local_file):
+def looks_like_private(name):
+    """Check if filename looks like a private file"""
+    private_prefix = ['_', '~', '.', '#']
+    return any(name.startswith(prefix) for prefix in private_prefix)
+
+
+def recursive_apply_skips(func, path, **kwargs):
+    """Recursively apply func to all files under path"""
+    ignore_patterns = kwargs.get('ignore_patterns', [])
+    p = Path(path)
+    res = 0
+    if p.is_dir():
+        # Read .shareignore if exists
+        if (p / '.shareignore').exists():
+            with open(p / '.shareignore', 'r') as f:
+                new_patterns = []
+                for line in f:
+                    pattern = line.split('#', 1)[0].strip()
+                    if pattern:
+                        if pattern.startswith('/'):
+                            pattern = pattern[1:]
+                        new_patterns.append(pattern)
+            ignore_patterns = ignore_patterns + new_patterns
+            kwargs['ignore_patterns'] = ignore_patterns
+        for sub_path in p.iterdir():
+            # Check against ignore patterns using fnmatch
+            if any(fnmatch.fnmatch(sub_path.name, pattern) or fnmatch.fnmatch(sub_path, pattern) for pattern in ignore_patterns):
+                continue
+            # Skip private-looking files
+            if looks_like_private(sub_path.name):
+                if not kwargs.get('suppress_extra', False):
+                    print(f"⚠ {sub_path} looks like private; skipping.")
+                continue
+            if sub_path.is_file() or sub_path.is_dir():
+                res += func(sub_path, **kwargs)
+        if res != 0:
+            return res
+        return 0
+    else:
+        return func(p, **kwargs)
+
+
+def recursive_apply_noskip(func, path, **kwargs):
+    """Recursively apply func to all files under path without skipping"""
+    ignore_patterns = kwargs.get('ignore_patterns', [])
+    kwargs['suppress_error'] = True  # Suppress errors for missing files
+    p = Path(path)
+    res = 0
+    if p.is_dir():
+        # Read .shareignore if exists
+        if (p / '.shareignore').exists():
+            with open(p / '.shareignore', 'r') as f:
+                new_patterns = []
+                for line in f:
+                    pattern = line.split('#', 1)[0].strip()
+                    if pattern:
+                        if pattern.startswith('/'):
+                            pattern = pattern[1:]
+                        new_patterns.append(pattern)
+            ignore_patterns = ignore_patterns + new_patterns
+            kwargs['ignore_patterns'] = ignore_patterns
+        for sub_path in p.iterdir():
+            # Check against ignore patterns using fnmatch
+            if any(fnmatch.fnmatch(sub_path.name, pattern) or fnmatch.fnmatch(sub_path, pattern) for pattern in ignore_patterns):
+                continue
+            if sub_path.is_file() or sub_path.is_dir():
+                res += func(sub_path, **kwargs)
+        if res != 0:
+            return res
+        return 0
+    else:
+        return func(p, **kwargs)
+
+
+def cmd_put(local_file, **kwargs):
     """Copy local file to shared (always overwrite)"""
     local_path = Path(local_file)
+    if local_path.is_dir():
+        recursive_apply_skips(cmd_put, local_path, **kwargs)
+        return 0
 
     if not file_exists_and_valid(local_path):
-        print(f"Error: Local file does not exist: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"Error: Local file does not exist: {local_file}")
         return 1
 
     shared_path = get_shared_path(local_file)
@@ -107,12 +186,15 @@ def cmd_put(local_file):
     return 0
 
 
-def cmd_push(local_file):
+def cmd_push(local_file, **kwargs):
     """Copy local file to shared only if local is newer"""
     local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_skips(cmd_push, local_path, **kwargs)
 
     if not file_exists_and_valid(local_path):
-        print(f"Error: Local file does not exist: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"Error: Local file does not exist: {local_file}")
         return 1
 
     shared_path = get_shared_path(local_file)
@@ -139,10 +221,11 @@ def cmd_push(local_file):
         return 0
     
 
-def cmd_push_all():
+def cmd_push_all(**kwargs):
     """Push all local files under SHARE_PATH to SHARED_ROOT if local is newer"""
     if SHARE_PATH is None:
-        print("Error: SHARE_PATH is not set. Cannot push all.")
+        if not kwargs.get('suppress_critical', False):
+            print("Error: SHARE_PATH is not set. Cannot push all.")
         return 1
     
     count = 0
@@ -182,15 +265,19 @@ def cmd_push_all():
     return 0
 
 
-def cmd_get(local_file):
+def cmd_get(local_file, **kwargs):
     """Copy shared file to local (always overwrite)"""
     local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_noskip(cmd_get, local_path, **kwargs)
+
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
 
     if not shared_path.exists():
-        print(f"Error: File not shared: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"Error: File not shared: {local_file}")
         return 1
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,15 +286,19 @@ def cmd_get(local_file):
     return 0
 
 
-def cmd_pull(local_file):
+def cmd_pull(local_file, **kwargs):
     """Copy shared file to local only if shared is newer"""
     local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_noskip(cmd_pull, local_path, **kwargs)
+
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
 
     if not shared_path.exists():
-        print(f"Error: File not shared: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"Error: File not shared: {local_file}")
         return 1
 
     # If local doesn't exist, always pull
@@ -226,14 +317,16 @@ def cmd_pull(local_file):
         print(f"✓ Pulled: {local_file} (shared newer)")
         return 0
     else:
-        print(f"⊘ Not pulled: {local_file} (local is newer or same)")
+        if not kwargs.get('suppress_extra', False):
+            print(f"⊘ Not pulled: {local_file} (local is newer or same)")
         return 0
     
 
-def cmd_pull_all():
+def cmd_pull_all(**kwargs):
     """Pull all shared files under SHARED_ROOT to SHARE_PATH if shared is newer"""
     if SHARE_PATH is None:
-        print("Error: SHARE_PATH is not set. Cannot pull all.")
+        if not kwargs.get('suppress_critical', False):
+            print("Error: SHARE_PATH is not set. Cannot pull all.")
         return 1
     
     count = 0
@@ -267,14 +360,15 @@ def cmd_pull_all():
             count += 1
 
     if count == 0:
-        print("✓ Already up to date")
+        if not kwargs.get('suppress_extra', False):
+            print("✓ Already up to date")
     else:
         print(f"✓ Pulled {count} files")
 
     return 0
 
 
-def cmd_sync(local_file):
+def cmd_sync(local_file, **kwargs):
     """Sync by copying whichever version is newer"""
     local_path = Path(local_file)
     shared_path = get_shared_path(local_file)
@@ -284,9 +378,14 @@ def cmd_sync(local_file):
     local_exists = file_exists_and_valid(local_path)
     shared_exists = shared_path.exists()
 
+    # If is path, recurse
+    if local_path.is_dir():
+        return recursive_apply_skips(cmd_sync, local_path, **kwargs)
+
     # If neither exists, error
     if not local_exists and not shared_exists:
-        print(f"Error: File exists in neither location: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"Error: File exists in neither location: {local_file}")
         return 1
 
     # If only one exists, copy to the other
@@ -315,14 +414,16 @@ def cmd_sync(local_file):
         print(f"✓ Synced: shared → {local_file} (shared newer)")
         return 0
     else:
-        print(f"✓ Already synced: {local_file}")
+        if not kwargs.get('suppress_extra', False):
+            print(f"✓ Already synced: {local_file}")
         return 0
 
 
-def cmd_sync_all():
+def cmd_sync_all(**kwargs):
     """Sync all files under SHARE_PATH and SHARED_ROOT by copying whichever is newer"""
     if SHARE_PATH is None:
-        print("Error: SHARE_PATH is not set. Cannot sync all.")
+        if not kwargs.get('suppress_critical', False):
+            print("Error: SHARE_PATH is not set. Cannot sync all.")
         return 1
     
     count = 0
@@ -373,15 +474,19 @@ def cmd_sync_all():
             count += 1
 
     if count == 0:
-        print("✓ Already up to date")
+        if not kwargs.get('suppress_extra', False):
+            print("✓ Already up to date")
     else:
         print(f"✓ Synced {count} files")
 
     return 0
 
-def cmd_check(local_file):
+def cmd_check(local_file, **kwargs):
     """Check the status of a file"""
     local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_skips(cmd_check, local_path, **kwargs)
+
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
@@ -399,17 +504,19 @@ def cmd_check(local_file):
 
     if not shared_exists:
         print("Status: ⊘ Not shared (only exists locally)")
-        if local_exists:
-            local_time = format_time(local_path.stat().st_mtime)
-            print(f"Local: Modified {local_time}")
-        print("→ Use 'share put' or 'share push' to share")
+        if not kwargs.get('suppress_extra', False):
+            if local_exists:
+                local_time = format_time(local_path.stat().st_mtime)
+                print(f"Local: Modified {local_time}")
+            print("→ Use 'share put' or 'share push' to share")
         return 0
 
     if not local_exists:
         print("Status: ⊘ Only in shared (not in local)")
         shared_time = format_time(shared_path.stat().st_mtime)
-        print(f"Shared: Modified {shared_time}")
-        print("→ Use 'share get' or 'share pull' to retrieve")
+        if not kwargs.get('suppress_extra', False):
+            print(f"Shared: Modified {shared_time}")
+            print("→ Use 'share get' or 'share pull' to retrieve")
         return 0
 
     # Both exist, compare
@@ -419,9 +526,10 @@ def cmd_check(local_file):
     local_time_str = format_time(local_mtime)
     shared_time_str = format_time(shared_mtime)
 
-    print(f"Local:  Modified {local_time_str}")
-    print(f"Shared: Modified {shared_time_str}")
-    print()
+    if not kwargs.get('suppress_extra', False):
+        print(f"Local:  Modified {local_time_str}")
+        print(f"Shared: Modified {shared_time_str}")
+        print()
 
     if file_is_newer(local_mtime, shared_mtime):
         print("Status: ⚠ Local is newer")
@@ -435,14 +543,19 @@ def cmd_check(local_file):
     return 0
 
 
-def cmd_remove(local_file):
+def cmd_remove(local_file, **kwargs):
     """Remove file from shared location"""
+    local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_noskip(cmd_remove, local_path, **kwargs)
+
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
 
     if not shared_path.exists():
-        print(f"File not in shared: {local_file}")
+        if not kwargs.get('suppress_error', False):
+            print(f"File not in shared: {local_file}")
         return 0
 
     shared_path.unlink()
@@ -460,12 +573,15 @@ def cmd_remove(local_file):
     return 0
 
 
-def cmd_status():
+def cmd_status(**kwargs):
     """Show status of entire shared directory"""
     if not SHARED_ROOT.exists():
-        print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
-        SHARED_ROOT.mkdir(parents=True, exist_ok=True)
-        print(f"Created shared directory: {SHARED_ROOT}")
+        if not kwargs.get('suppress_critical', False):
+            print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
+            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
+            print(f"Created shared directory: {SHARED_ROOT}")
+        else:
+            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
         print("No files tracked")
         return 0
 
@@ -506,6 +622,9 @@ def cmd_status():
     print(f"Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
     print(f"Total files tracked: {total}")
     print()
+
+    if kwargs.get('suppress_extra', False):
+        return 0
 
     if synced:
         print(f"✓ Synced: {len(synced)} files")
