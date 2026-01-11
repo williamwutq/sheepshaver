@@ -179,6 +179,7 @@ def cmd_push_all():
         print("✓ Already up to date")
     else:
         print(f"✓ Pushed {count} files")
+    return 0
 
 
 def cmd_get(local_file):
@@ -559,7 +560,7 @@ def cmd_list():
 
 def main():
     parser = argparse.ArgumentParser(
-                description='Share utility - Sync files between local and shared directory',
+                description='Share utility - Sync files between local and shared directory (supports multiple files)',
                 formatter_class=argparse.RawDescriptionHelpFormatter,
                 epilog="""
 Customization:
@@ -569,39 +570,39 @@ Customization:
         preserving their relative path under SHARE_PATH.
 
 Commands:
-  list           List all files in shared directory
-  put <file>     Copy file to shared (always overwrite)
-  push <file>    Copy to shared only if local is newer
-  pushall        Push all local files to shared if local is newer
-  get <file>     Copy from shared to local (always overwrite)
-  pull <file>    Copy from shared only if shared is newer
-  pullall        Pull all shared files to local if shared is newer
-  sync <file>    Sync by copying whichever is newer
-  syncall        Sync all files by copying whichever is newer
-  check <file>   Check sync status of file
-  rm <file>      Remove file from shared location
-  status         Show status of entire shared directory
+  list                 List all files in shared directory
+  put <file> [...]     Copy file(s) to shared (always overwrite)
+  push <file> [...]    Copy to shared only if local is newer
+  pushall              Push all local files to shared if local is newer
+  get <file> [...]     Copy from shared to local (always overwrite)
+  pull <file> [...]    Copy from shared only if shared is newer
+  pullall              Pull all shared files to local if shared is newer
+  sync <file> [...]    Sync by copying whichever is newer
+  syncall              Sync all files by copying whichever is newer
+  check <file> [...]   Check sync status of file(s)
+  rm <file> [...]      Remove file(s) from shared location
+  status               Show status of entire shared directory
 
 Examples:
   share put rust/cargo.toml
-  share push rust/cargo.toml
-  share check rust/cargo.toml
+  share push rust/cargo.toml src/main.rs
+  share check rust/cargo.toml src/main.rs
   share list
   share status
         """
     )
 
     parser.add_argument('command', help='Command to execute')
-    parser.add_argument('file', nargs='?', help='File path (required for most commands)')
+    parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
 
     if len(sys.argv) == 1:
-        parser.print_help()
+        parser.print_usage()
         return 0
 
     args = parser.parse_args()
 
     command = args.command.lower()
-    file_path = args.file
+    file_paths = args.file
 
     # Commands that don't require a file argument
     if command == 'status':
@@ -632,11 +633,22 @@ Examples:
         print("Use 'share --help' for usage information")
         return 1
     
-    if not file_path:
-        print(f"Error: '{command}' requires a file argument")
+    if not file_paths:
+        print(f"Error: '{command}' require at least one file path argument")
         return 1
 
-    return commands[command](file_path)
+    if len(file_paths) > 1:
+        # Multiple files
+        res = 0
+        for f in file_paths:
+            res += commands[command](f)
+        if res != 0:
+            print(f"⚠ '{command}' completed with {res} errors")
+            return 1
+        return 0
+    else:
+        # Single file
+        return commands[command](file_paths[0])
 
 
 if __name__ == "__main__":

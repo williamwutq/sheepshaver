@@ -36,28 +36,29 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 - Set your local root by creating a file `~/.sharepath` containing the absolute path
 - Set your shared root by creating a file `~/.shareroot` containing the absolute path (defaults to `~/Shared/dump` if not set)
 - Only files under SHARE_PATH are managed; attempts to share files outside this path will be rejected
+- Most commands support specifying multiple files at once (e.g., `share put file1 file2 file3`)
 
 ## Usage
 ```
-share list           # List all files in shared directory
-share put <file>     # Copy file to shared (always overwrite)
-share push <file>    # Copy to shared only if local is newer
-share pushall        # Push all local files to shared if local is newer
-share get <file>     # Copy from shared to local (always overwrite)
-share pull <file>    # Copy from shared only if shared is newer
-share pullall        # Pull all shared files to local if shared is newer
-share sync <file>    # Sync by copying whichever is newer
-share syncall        # Sync all files by copying whichever is newer
-share check <file>   # Check sync status of file
-share rm <file>      # Remove file from shared location
-share status         # Show status of entire shared directory
+share list                   # List all files in shared directory
+share put <file> [...]       # Copy file(s) to shared (always overwrite)
+share push <file> [...]      # Copy to shared only if local is newer
+share pushall                # Push all local files to shared if local is newer
+share get <file> [...]       # Copy from shared to local (always overwrite)
+share pull <file> [...]      # Copy from shared only if shared is newer
+share pullall                # Pull all shared files to local if shared is newer
+share sync <file> [...]      # Sync by copying whichever is newer
+share syncall                # Sync all files by copying whichever is newer
+share check <file> [...]     # Check sync status of file(s)
+share rm <file> [...]        # Remove file(s) from shared location
+share status                 # Show status of entire shared directory
 ```
 
 ## Example
 ```
 share put rust/cargo.toml
-share push rust/cargo.toml
-share check rust/cargo.toml
+share push rust/cargo.toml src/main.rs
+share check rust/cargo.toml src/main.rs
 share list
 share status
 ```

@@ -23,44 +23,44 @@ Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set
 .B list
 List all files in shared directory.
 .TP
-.B put <file>
-Copy file to shared (always overwrite).
+.B put <file> [...]
+Copy file(s) to shared (always overwrite).
 .TP
-.B push <file>
+.B push <file> [...]
 Copy to shared only if local is newer.
 .TP
 .B pushall
 Push all local files to shared if local is newer.
 .TP
-.B get <file>
+.B get <file> [...]
 Copy from shared to local (always overwrite).
 .TP
-.B pull <file>
+.B pull <file> [...]
 Copy from shared only if shared is newer.
 .TP
 .B pullall
 Pull all shared files to local if shared is newer.
 .TP
-.B sync <file>
+.B sync <file> [...]
 Sync by copying whichever is newer.
 .TP
 .B syncall
 Sync all files by copying whichever is newer.
 .TP
-.B check <file>
-Check sync status of file.
+.B check <file> [...]
+Check sync status of file(s).
 .TP
-.B rm <file>
-Remove file from shared location.
+.B rm <file> [...]
+Remove file(s) from shared location.
 .TP
 .B status
 Show status of entire shared directory.
 
 .SH EXAMPLES
 .nf
-share put path/to/file.txt
-share push path/to/file.txt
-share check path/to/file.txt
+share put rust/cargo.toml
+share push rust/cargo.toml src/main.rs
+share check rust/cargo.toml src/main.rs
 share list
 share status
 .fi
