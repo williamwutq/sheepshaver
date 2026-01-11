@@ -31,26 +31,37 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 - Only manages files under a configurable local root (SHARE_PATH)
 - Shared root (SHARED_ROOT) is also configurable
 - Supports push, pull, put, get, sync, check, remove, and status commands
+- Supports multiple files and directories as input for most commands
+- Configurable ignore patterns similar to .gitignore
+- Informative output with configurable verbosity levels
 
 ## Configuration
 - Set your local root by creating a file `~/.sharepath` containing the absolute path
 - Set your shared root by creating a file `~/.shareroot` containing the absolute path (defaults to `~/Shared/dump` if not set)
+- Configurable ignore patterns via `~/.shareignore` (similar to .gitignore)
 - Only files under SHARE_PATH are managed; attempts to share files outside this path will be rejected
 - Most commands support specifying multiple files at once (e.g., `share put file1 file2 file3`)
 
+## Flags
+- `--suppress-extra` / `--no-extra` / `-next` / `-sext`: Suppress extra informational messages
+- `--suppress-error` / `--no-error` / `-nerr` / `-serr`: Suppress error messages
+- `--suppress-critical` / `--no-critical` / `-ncrt` / `-scrt`: Suppress critical error messages
+- `--suppress` / `--no` / `-no` / `-s`: Suppress all messages except critical errors
+- `--ignore` / `-i`: Add ignore pattern (can be used multiple times)
+
 ## Usage
 ```
-share list                   # List all files in shared directory
-share put <file> [...]       # Copy file(s) to shared (always overwrite)
-share push <file> [...]      # Copy to shared only if local is newer
+share list                   # List all files in shared directory.
+share put <file> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
+share push <file> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
 share pushall                # Push all local files to shared if local is newer
-share get <file> [...]       # Copy from shared to local (always overwrite)
-share pull <file> [...]      # Copy from shared only if shared is newer
-share pullall                # Pull all shared files to local if shared is newer
-share sync <file> [...]      # Sync by copying whichever is newer
-share syncall                # Sync all files by copying whichever is newer
-share check <file> [...]     # Check sync status of file(s)
-share rm <file> [...]        # Remove file(s) from shared location
+share get <file> [...]       # Copy from shared to local (always overwrite).
+share pull <file> [...]      # Copy from shared only if shared is newer. If input is a directory, pull all files under it.
+share pullall                # Pull all shared files to local if shared is newer.
+share sync <file> [...]      # Sync by copying whichever is newer. If input is a directory, sync all files under it.
+share syncall                # Sync all files by copying whichever is newer.
+share check <file> [...]     # Check sync status of file(s). If input is a directory, check all files under it.
+share rm <file> [...]        # Remove file(s) from shared location. If input is a directory, remove all files under it.
 share status                 # Show status of entire shared directory
 ```
 

@@ -1,6 +1,6 @@
 .TH SHARE 1 "January 2026" "share utility" "User Commands"
 .SH NAME
-share \- sync files between local filesystem and a shared directory
+share \- sync files between local filesystem and a shared directory (support multiple files and directories)
 .SH SYNOPSIS
 .B share
 .I command
@@ -17,6 +17,32 @@ Absolute path to the local root directory. Only files under this directory are m
 .TP
 ~/.shareroot
 Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set.
+.TP
+**/.shareignore
+Patterns of files to ignore during operations, similar to .gitignore. When recursive operations are performed on directories, files matching these patterns will be skipped. However, this will not affect the pushall, pullall, and syncall commands, which always consider all files beneath SHARE_PATH.
+
+.SH OPTIONS
+.TP
+.B --help, -h
+Display help information about the share utility.
+.TP
+.B --version, -v
+Display the version of the share utility.
+
+.TP
+The following flags can be used to control the verbosity of the output:
+.TP
+.B --suppress-extra, --no-extra, -next, -sext
+Suppress extra informational messages.
+.TP
+.B --suppress-error, --no-error, -nerr, -serr
+Suppress error messages.
+.TP
+.B --suppress-critical, --no-critical, -ncrt, -scrt
+Suppress critical error messages.
+.TP
+.B --suppress, --no, -no, -s
+Suppress all messages except critical errors.
 
 .SH COMMANDS
 .TP
@@ -24,25 +50,25 @@ Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set
 List all files in shared directory.
 .TP
 .B put <file> [...]
-Copy file(s) to shared (always overwrite).
+Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 .TP
 .B push <file> [...]
-Copy to shared only if local is newer.
+Copy to shared only if local is newer. If input is a directory, push all files under it.
 .TP
 .B pushall
 Push all local files to shared if local is newer.
 .TP
 .B get <file> [...]
-Copy from shared to local (always overwrite).
+Copy from shared to local (always overwrite). If input is a directory, get all files under it.
 .TP
 .B pull <file> [...]
-Copy from shared only if shared is newer.
+Copy from shared only if shared is newer. If input is a directory, pull all files under it.
 .TP
 .B pullall
 Pull all shared files to local if shared is newer.
 .TP
 .B sync <file> [...]
-Sync by copying whichever is newer.
+Sync by copying whichever is newer. If input is a directory, sync all files under it.
 .TP
 .B syncall
 Sync all files by copying whichever is newer.

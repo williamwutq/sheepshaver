@@ -680,7 +680,7 @@ def cmd_list(**kwargs):
 
 def main():
     parser = argparse.ArgumentParser(
-                description='Share utility - Sync files between local and shared directory (supports multiple files)',
+                description='Share utility - Sync files between local and shared directory (support multiple files and directories)',
                 formatter_class=argparse.RawDescriptionHelpFormatter,
                 epilog="""
 Customization:
@@ -690,18 +690,18 @@ Customization:
         preserving their relative path under SHARE_PATH.
 
 Commands:
-  list                 List all files in shared directory
-  put <file> [...]     Copy file(s) to shared (always overwrite)
-  push <file> [...]    Copy to shared only if local is newer
-  pushall              Push all local files to shared if local is newer
-  get <file> [...]     Copy from shared to local (always overwrite)
-  pull <file> [...]    Copy from shared only if shared is newer
-  pullall              Pull all shared files to local if shared is newer
-  sync <file> [...]    Sync by copying whichever is newer
-  syncall              Sync all files by copying whichever is newer
-  check <file> [...]   Check sync status of file(s)
-  rm <file> [...]      Remove file(s) from shared location
-  status               Show status of entire shared directory
+  list                 List all files in shared directory.
+  put <file> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
+  push <file> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
+  pushall              Push all local files to shared if local is newer.
+  get <file> [...]     Copy from shared to local (always overwrite). If input is a directory, get all files under it.
+  pull <file> [...]    Copy from shared only if shared is newer. If input is a directory, pull all files under it.
+  pullall              Pull all shared files to local if shared is newer.
+  sync <file> [...]    Sync by copying whichever is newer. If input is a directory, sync all files under it.
+  syncall              Sync all files by copying whichever is newer.
+  check <file> [...]   Check sync status of file(s). If input is a directory, check all files under it.
+  rm <file> [...]      Remove file(s) from shared location. If input is a directory, remove all files under it.
+  status               Show status of entire shared directory.
 
 Examples:
   share put rust/cargo.toml
@@ -714,11 +714,12 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
+    parser.add_argument('-v', '--version', action='version', version='share utility version 1.2')
     # Flags, --suppress-extra, --suppress-error, --suppress-critical:
-    parser.add_argument('--suppress-extra', '--no-extra', '-next', '-sext', action='store_true', help='Suppress extra informational messages')
-    parser.add_argument('--suppress-error', '--no-error', '-nerr', '-serr', action='store_true', help='Suppress error messages')
-    parser.add_argument('--suppress-critical', '--no-critical', '-ncrt', '-scrt', action='store_true', help='Suppress critical error messages')
-    parser.add_argument('--suppress', '--no', '-no', '-s', action='store_true', help='Suppress all messages except critical errors')
+    parser.add_argument('-next', '-sext', '--suppress-extra', '--no-extra', action='store_true', help='Suppress extra informational messages')
+    parser.add_argument('-nerr', '-serr', '--suppress-error', '--no-error', action='store_true', help='Suppress error messages')
+    parser.add_argument('-ncrt', '-scrt', '--suppress-critical', '--no-critical', action='store_true', help='Suppress critical error messages')
+    parser.add_argument('-s', '-no', '--suppress', '--no', action='store_true', help='Suppress all messages except critical errors')
     parser.add_argument('--ignore', '-i', action='append', help='Add ignore pattern')
 
     if len(sys.argv) == 1:
