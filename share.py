@@ -623,36 +623,37 @@ def cmd_status(**kwargs):
     print(f"Total files tracked: {total}")
     print()
 
-    if kwargs.get('suppress_extra', False):
-        return 0
-
     if synced:
         print(f"✓ Synced: {len(synced)} files")
-        for f in synced[:5]:
-            print(f"  {f}")
-        if len(synced) > 5:
-            print(f"  ... and {len(synced) - 5} more")
-        print()
+        if not kwargs.get('suppress_extra', False):
+            for f in synced[:5]:
+                print(f"  {f}")
+            if len(synced) > 5:
+                print(f"  ... and {len(synced) - 5} more")
+            print()
 
     if need_push:
         print(f"⚠ Need push (local newer): {len(need_push)} files")
-        for f in need_push:
-            print(f"  {f}")
-        print()
+        if not kwargs.get('suppress_extra', False):
+            for f in need_push:
+                print(f"  {f}")
+            print()
 
     if need_pull:
         print(f"⚠ Need pull (shared newer): {len(need_pull)} files")
-        for f in need_pull:
-            print(f"  {f}")
-        print()
+        if not kwargs.get('suppress_extra', False):
+            for f in need_pull:
+                print(f"  {f}")
+            print()
 
     if only_shared:
         print(f"⊘ Only in shared: {len(only_shared)} files")
-        for local_f, shared_f in only_shared[:5]:
-            print(f"  {local_f}")
-        if len(only_shared) > 5:
-            print(f"  ... and {len(only_shared) - 5} more")
-        print()
+        if not kwargs.get('suppress_extra', False):
+            for local_f, shared_f in only_shared[:5]:
+                print(f"  {local_f}")
+            if len(only_shared) > 5:
+                print(f"  ... and {len(only_shared) - 5} more")
+            print()
 
     if not (synced or need_push or need_pull or only_shared):
         print("No files tracked")
@@ -660,7 +661,7 @@ def cmd_status(**kwargs):
     return 0
 
 
-def cmd_list():
+def cmd_list(**kwargs):
     """List all files in shared directory"""
     if not SHARED_ROOT.exists():
         return 1
@@ -713,27 +714,37 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
+    # Flags, --suppress-extra, --suppress-error, --suppress-critical:
+    parser.add_argument('--suppress-extra', '--no-extra', '-next', '-sext', action='store_true', help='Suppress extra informational messages')
+    parser.add_argument('--suppress-error', '--no-error', '-nerr', '-serr', action='store_true', help='Suppress error messages')
+    parser.add_argument('--suppress-critical', '--no-critical', '-ncrt', '-scrt', action='store_true', help='Suppress critical error messages')
+    parser.add_argument('--suppress', '--no', '-no', '-s', action='store_true', help='Suppress all messages except critical errors')
+    parser.add_argument('--ignore', '-i', action='append', help='Add ignore pattern')
 
     if len(sys.argv) == 1:
         parser.print_usage()
         return 0
 
     args = parser.parse_args()
+    suppress_extra = args.suppress_extra or args.suppress
+    suppress_error = args.suppress_error or args.suppress
+    suppress_critical = args.suppress_critical
+    ignore_patterns = args.ignore if args.ignore else []
 
     command = args.command.lower()
     file_paths = args.file
 
     # Commands that don't require a file argument
     if command == 'status':
-        return cmd_status()
+        return cmd_status(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'pushall':
-        return cmd_push_all()
+        return cmd_push_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'pullall':
-        return cmd_pull_all()
+        return cmd_pull_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'syncall':
-        return cmd_sync_all()
+        return cmd_sync_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'list':
-        return cmd_list()
+        return cmd_list(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
 
     # Dispatch to appropriate command
     commands = {
@@ -760,14 +771,14 @@ Examples:
         # Multiple files
         res = 0
         for f in file_paths:
-            res += commands[command](f)
+            res += commands[command](f, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
         if res != 0:
             print(f"⚠ '{command}' completed with {res} errors")
             return 1
         return 0
     else:
         # Single file
-        return commands[command](file_paths[0])
+        return commands[command](file_paths[0], suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
 
 
 if __name__ == "__main__":
