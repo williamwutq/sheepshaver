@@ -62,7 +62,7 @@ share sync <file> [...]      # Sync by copying whichever is newer. If input is a
 share syncall                # Sync all files by copying whichever is newer.
 share check <file> [...]     # Check sync status of file(s). If input is a directory, check all files under it.
 share rm <file> [...]        # Remove file(s) from shared location. If input is a directory, remove all files under it.
-share status                 # Show status of entire shared directory
+share status [dir ...]     # Show status of local directory (or directories). If no dir specified, show status of all tracked files.
 ```
 
 ## Example
@@ -72,6 +72,7 @@ share push rust/cargo.toml src/main.rs
 share check rust/cargo.toml src/main.rs
 share list
 share status
+share status rust src
 ```
 
 ## Man Page

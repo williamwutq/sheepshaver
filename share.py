@@ -620,7 +620,8 @@ def cmd_status(**kwargs):
 
     print(f"Shared directory: {SHARED_ROOT}")
     print(f"Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
-    print(f"Total files tracked: {total}")
+    if total > 0:
+        print(f"Total files tracked: {total}")
     print()
 
     if synced:
@@ -661,6 +662,99 @@ def cmd_status(**kwargs):
     return 0
 
 
+def cmd_status_local(dirs, **kwargs):
+    """Show status of local directory"""
+    # This function is not implemented in this version
+    if not SHARED_ROOT.exists():
+        if not kwargs.get('suppress_critical', False):
+            print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
+            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
+            print(f"Created shared directory: {SHARED_ROOT}")
+        else:
+            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
+        print("No files tracked")
+        return 0
+
+    synced = []
+    need_push = []
+    need_pull = []
+    valids = []
+
+    # Walk through local directory
+    for dir in dirs:
+        # Check existence
+        if not Path(dir).exists():
+            if not kwargs.get('suppress_error', False):
+                print(f"Error: Local directory does not exist: {dir}")
+            continue
+        if not Path(dir).is_dir():
+            if not kwargs.get('suppress_error', False):
+                print(f"Error: Not a directory: {dir}")
+            continue
+        valids.append(dir)
+        for local_file in Path(dir).rglob('*'):
+            if not local_file.is_file():
+                continue
+
+            shared_path = get_shared_path(local_file)
+            if shared_path is None:
+                continue
+
+            if not shared_path.exists():
+                continue
+
+            local_mtime = local_file.stat().st_mtime
+            shared_mtime = shared_path.stat().st_mtime
+
+            if file_is_newer(local_mtime, shared_mtime):
+                need_push.append(local_file)
+            elif file_is_newer(shared_mtime, local_mtime):
+                need_pull.append(local_file)
+            else:
+                synced.append(local_file)
+
+    total = len(synced) + len(need_push) + len(need_pull)
+    if len(valids) == 0:
+        print("No valid local directories specified")
+        return 0
+    elif len(valids) == 1:
+        print(f"Local directory: {valids[0]}")
+    else:
+        print(f"Local directories: {', '.join(valids)}")
+    print(f"Shared directory: {SHARED_ROOT}")
+    if total > 0:
+        print(f"Total files tracked: {total}")
+    print()
+
+    if synced:
+        print(f"✓ Synced: {len(synced)} files")
+        if not kwargs.get('suppress_extra', False):
+            for f in synced[:5]:
+                print(f"  {f}")
+            if len(synced) > 5:
+                print(f"  ... and {len(synced) - 5} more")
+            print()
+    
+    if need_push:
+        print(f"⚠ Need push (local newer): {len(need_push)} files")
+        if not kwargs.get('suppress_extra', False):
+            for f in need_push:
+                print(f"  {f}")
+            print()
+    
+    if need_pull:
+        print(f"⚠ Need pull (shared newer): {len(need_pull)} files")
+        if not kwargs.get('suppress_extra', False):
+            for f in need_pull:
+                print(f"  {f}")
+            print()
+
+    if not (synced or need_push or need_pull):
+        print("No files tracked")
+
+    return 0
+
+
 def cmd_list(**kwargs):
     """List all files in shared directory"""
     if not SHARED_ROOT.exists():
@@ -691,17 +785,17 @@ Customization:
 
 Commands:
   list                 List all files in shared directory.
-  put <file> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
-  push <file> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
+  put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
+  push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
   pushall              Push all local files to shared if local is newer.
-  get <file> [...]     Copy from shared to local (always overwrite). If input is a directory, get all files under it.
-  pull <file> [...]    Copy from shared only if shared is newer. If input is a directory, pull all files under it.
+  get <path> [...]     Copy from shared to local (always overwrite). If input is a directory, get all files under it.
+  pull <path> [...]    Copy from shared only if shared is newer. If input is a directory, pull all files under it.
   pullall              Pull all shared files to local if shared is newer.
-  sync <file> [...]    Sync by copying whichever is newer. If input is a directory, sync all files under it.
+  sync <path> [...]    Sync by copying whichever is newer. If input is a directory, sync all files under it.
   syncall              Sync all files by copying whichever is newer.
-  check <file> [...]   Check sync status of file(s). If input is a directory, check all files under it.
-  rm <file> [...]      Remove file(s) from shared location. If input is a directory, remove all files under it.
-  status               Show status of entire shared directory.
+  check <path> [...]   Check sync status of file(s). If input is a directory, check all files under it.
+  rm <path> [...]      Remove file(s) from shared location. If input is a directory, remove all files under it.
+  status [dir ...]     Show status of entire shared directory or local directory if specified.
 
 Examples:
   share put rust/cargo.toml
@@ -709,6 +803,7 @@ Examples:
   share check rust/cargo.toml src/main.rs
   share list
   share status
+  share status rust src
         """
     )
 
@@ -736,7 +831,7 @@ Examples:
     file_paths = args.file
 
     # Commands that don't require a file argument
-    if command == 'status':
+    if command == 'status' and len(file_paths) == 0:
         return cmd_status(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'pushall':
         return cmd_push_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
@@ -746,6 +841,8 @@ Examples:
         return cmd_sync_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'list':
         return cmd_list(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+    elif command == 'status' and len(file_paths) > 0:
+        return cmd_status_local(file_paths, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
 
     # Dispatch to appropriate command
     commands = {

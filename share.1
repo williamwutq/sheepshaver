@@ -43,44 +43,47 @@ Suppress critical error messages.
 .TP
 .B --suppress, --no, -no, -s
 Suppress all messages except critical errors.
+.TP
+.B --ignore <pattern>, -i <pattern>
+Specify additional ignore patterns (can be used multiple times).
 
 .SH COMMANDS
 .TP
 .B list
 List all files in shared directory.
 .TP
-.B put <file> [...]
+.B put <path> [...]
 Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 .TP
-.B push <file> [...]
+.B push <path> [...]
 Copy to shared only if local is newer. If input is a directory, push all files under it.
 .TP
 .B pushall
 Push all local files to shared if local is newer.
 .TP
-.B get <file> [...]
+.B get <path> [...]
 Copy from shared to local (always overwrite). If input is a directory, get all files under it.
 .TP
-.B pull <file> [...]
+.B pull <path> [...]
 Copy from shared only if shared is newer. If input is a directory, pull all files under it.
 .TP
 .B pullall
 Pull all shared files to local if shared is newer.
 .TP
-.B sync <file> [...]
+.B sync <path> [...]
 Sync by copying whichever is newer. If input is a directory, sync all files under it.
 .TP
 .B syncall
 Sync all files by copying whichever is newer.
 .TP
-.B check <file> [...]
+.B check <path> [...]
 Check sync status of file(s).
 .TP
-.B rm <file> [...]
+.B rm <path> [...]
 Remove file(s) from shared location.
 .TP
-.B status
-Show status of entire shared directory.
+.B status [dir ...]
+Show status of entire shared directory or local directory if specified.
 
 .SH EXAMPLES
 .nf
@@ -89,6 +92,7 @@ share push rust/cargo.toml src/main.rs
 share check rust/cargo.toml src/main.rs
 share list
 share status
+share status rust src
 .fi
 
 .SH NOTES
