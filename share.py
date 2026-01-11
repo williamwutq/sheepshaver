@@ -132,6 +132,48 @@ def cmd_push(local_file):
     else:
         print(f"⊘ Not pushed: {local_file} (shared is newer or same)")
         return 0
+    
+
+def cmd_push_all():
+    """Push all local files under SHARE_PATH to SHARED_ROOT if local is newer"""
+    if SHARE_PATH is None:
+        print("Error: SHARE_PATH is not set. Cannot push all.")
+        return 1
+    
+    count = 0
+
+    for remote_file in SHARED_ROOT.rglob('*'):
+        if not remote_file.is_file():
+            continue
+        local_path = Path(remote_file)
+        # Reconstruct local path
+        relative = local_path.relative_to(SHARED_ROOT)
+        local_file = SHARE_PATH / relative
+        local_path = Path(local_file)
+
+        if not file_exists_and_valid(local_path):
+            continue
+
+        # If shared doesn't exist, always push
+        if not remote_file.exists():
+            remote_file.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(local_path, remote_file)
+            print(f"✓ Pushed: {local_file} → {remote_file} (new)")
+            count += 1
+            continue
+
+        # Compare modification times
+        local_mtime = local_path.stat().st_mtime
+        shared_mtime = remote_file.stat().st_mtime
+        if local_mtime > shared_mtime:
+            shutil.copy2(local_path, remote_file)
+            print(f"✓ Pushed: {local_file} (local newer)")
+            count += 1
+        
+    if count == 0:
+        print("✓ Already up to date")
+    else:
+        print(f"✓ Pushed {count} files")
 
 
 def cmd_get(local_file):
@@ -180,6 +222,50 @@ def cmd_pull(local_file):
     else:
         print(f"⊘ Not pulled: {local_file} (local is newer or same)")
         return 0
+    
+
+def cmd_pull_all():
+    """Pull all shared files under SHARED_ROOT to SHARE_PATH if shared is newer"""
+    if SHARE_PATH is None:
+        print("Error: SHARE_PATH is not set. Cannot pull all.")
+        return 1
+    
+    count = 0
+
+    for shared_file in SHARED_ROOT.rglob('*'):
+        if not shared_file.is_file():
+            continue
+        shared_path = Path(shared_file)
+        # Reconstruct local path
+        relative = shared_path.relative_to(SHARED_ROOT)
+        if SHARE_PATH:
+            local_file = SHARE_PATH / relative
+        else:
+            local_file = Path(relative)
+        local_path = Path(local_file)
+
+        # If local doesn't exist, always pull
+        if not local_path.exists():
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(shared_path, local_path)
+            print(f"✓ Pulled: {local_file} (new locally)")
+            count += 1
+            continue
+
+        # Compare modification times
+        local_mtime = local_path.stat().st_mtime
+        shared_mtime = shared_path.stat().st_mtime
+        if shared_mtime > local_mtime:
+            shutil.copy2(shared_path, local_path)
+            print(f"✓ Pulled: {local_file} (shared newer)")
+            count += 1
+
+    if count == 0:
+        print("✓ Already up to date")
+    else:
+        print(f"✓ Pulled {count} files")
+
+    return 0
 
 
 def cmd_sync(local_file):
@@ -226,6 +312,66 @@ def cmd_sync(local_file):
         print(f"✓ Already synced: {local_file}")
         return 0
 
+
+def cmd_sync_all():
+    """Sync all files under SHARE_PATH and SHARED_ROOT by copying whichever is newer"""
+    if SHARE_PATH is None:
+        print("Error: SHARE_PATH is not set. Cannot sync all.")
+        return 1
+    
+    count = 0
+
+    # Walk through shared directory
+    for shared_file in SHARED_ROOT.rglob('*'):
+        if not shared_file.is_file():
+            continue
+
+        # Reconstruct local path
+        relative = shared_file.relative_to(SHARED_ROOT)
+        if SHARE_PATH:
+            local_file = SHARE_PATH / relative
+        else:
+            local_file = Path(relative)
+        local_path = Path(local_file)
+        shared_path = Path(shared_file)
+
+        local_exists = file_exists_and_valid(local_path)
+        shared_exists = shared_path.exists()
+
+        # If only one exists, copy to the other
+        if not local_exists:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(shared_path, local_path)
+            print(f"✓ Synced: shared → {local_file} (new)")
+            count += 1
+            continue
+
+        if not shared_exists:
+            shared_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(local_path, shared_path)
+            print(f"✓ Synced: {local_file} → shared (new)")
+            count += 1
+            continue
+
+        # Both exist, compare times
+        local_mtime = local_path.stat().st_mtime
+        shared_mtime = shared_path.stat().st_mtime
+
+        if local_mtime > shared_mtime:
+            shutil.copy2(local_path, shared_path)
+            print(f"✓ Synced: {local_file} → shared (local newer)")
+            count += 1
+        elif shared_mtime > local_mtime:
+            shutil.copy2(shared_path, local_path)
+            print(f"✓ Synced: shared → {local_file} (shared newer)")
+            count += 1
+
+    if count == 0:
+        print("✓ Already up to date")
+    else:
+        print(f"✓ Synced {count} files")
+
+    return 0
 
 def cmd_check(local_file):
     """Check the status of a file"""
@@ -393,6 +539,23 @@ def cmd_status():
     return 0
 
 
+def cmd_list():
+    """List all files in shared directory"""
+    if not SHARED_ROOT.exists():
+        return 1
+
+    for shared_file in SHARED_ROOT.rglob('*'):
+        if shared_file.is_file():
+            # Show the path relative to SHARED_ROOT, and if SHARE_PATH is set, show as under SHARE_PATH
+            relative = shared_file.relative_to(SHARED_ROOT)
+            if SHARE_PATH:
+                print(SHARE_PATH / relative)
+            else:
+                print(relative)
+
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
                 description='Share utility - Sync files between local and shared directory',
@@ -405,11 +568,15 @@ Customization:
         preserving their relative path under SHARE_PATH.
 
 Commands:
+  list           List all files in shared directory
   put <file>     Copy file to shared (always overwrite)
   push <file>    Copy to shared only if local is newer
+  pushall        Push all local files to shared if local is newer
   get <file>     Copy from shared to local (always overwrite)
   pull <file>    Copy from shared only if shared is newer
+  pullall        Pull all shared files to local if shared is newer
   sync <file>    Sync by copying whichever is newer
+  syncall        Sync all files by copying whichever is newer
   check <file>   Check sync status of file
   rm <file>      Remove file from shared location
   status         Show status of entire shared directory
@@ -418,6 +585,7 @@ Examples:
   share put rust/cargo.toml
   share push rust/cargo.toml
   share check rust/cargo.toml
+  share list
   share status
         """
     )
@@ -437,11 +605,14 @@ Examples:
     # Commands that don't require a file argument
     if command == 'status':
         return cmd_status()
-
-    # All other commands require a file argument
-    if not file_path:
-        print(f"Error: '{command}' requires a file argument")
-        return 1
+    elif command == 'pushall':
+        return cmd_push_all()
+    elif command == 'pullall':
+        return cmd_pull_all()
+    elif command == 'syncall':
+        return cmd_sync_all()
+    elif command == 'list':
+        return cmd_list()
 
     # Dispatch to appropriate command
     commands = {
@@ -458,6 +629,10 @@ Examples:
     if command not in commands:
         print(f"Error: Unknown command '{command}'")
         print("Use 'share --help' for usage information")
+        return 1
+    
+    if not file_path:
+        print(f"Error: '{command}' requires a file argument")
         return 1
 
     return commands[command](file_path)

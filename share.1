@@ -20,11 +20,17 @@ Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set
 
 .SH COMMANDS
 .TP
+.B list
+List all files in shared directory.
+.TP
 .B put <file>
 Copy file to shared (always overwrite).
 .TP
 .B push <file>
 Copy to shared only if local is newer.
+.TP
+.B pushall
+Push all local files to shared if local is newer.
 .TP
 .B get <file>
 Copy from shared to local (always overwrite).
@@ -32,8 +38,14 @@ Copy from shared to local (always overwrite).
 .B pull <file>
 Copy from shared only if shared is newer.
 .TP
+.B pullall
+Pull all shared files to local if shared is newer.
+.TP
 .B sync <file>
 Sync by copying whichever is newer.
+.TP
+.B syncall
+Sync all files by copying whichever is newer.
 .TP
 .B check <file>
 Check sync status of file.
@@ -49,6 +61,7 @@ Show status of entire shared directory.
 share put path/to/file.txt
 share push path/to/file.txt
 share check path/to/file.txt
+share list
 share status
 .fi
 

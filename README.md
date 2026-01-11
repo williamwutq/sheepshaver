@@ -39,11 +39,15 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 
 ## Usage
 ```
+share list           # List all files in shared directory
 share put <file>     # Copy file to shared (always overwrite)
 share push <file>    # Copy to shared only if local is newer
+share pushall        # Push all local files to shared if local is newer
 share get <file>     # Copy from shared to local (always overwrite)
 share pull <file>    # Copy from shared only if shared is newer
+share pullall        # Pull all shared files to local if shared is newer
 share sync <file>    # Sync by copying whichever is newer
+share syncall        # Sync all files by copying whichever is newer
 share check <file>   # Check sync status of file
 share rm <file>      # Remove file from shared location
 share status         # Show status of entire shared directory
@@ -54,6 +58,7 @@ share status         # Show status of entire shared directory
 share put rust/cargo.toml
 share push rust/cargo.toml
 share check rust/cargo.toml
+share list
 share status
 ```
 
