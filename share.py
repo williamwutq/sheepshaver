@@ -422,10 +422,10 @@ def cmd_check(local_file):
     print(f"Shared: Modified {shared_time_str}")
     print()
 
-    if file_is_newer(local_mtime > shared_mtime):
+    if file_is_newer(local_mtime, shared_mtime):
         print("Status: ⚠ Local is newer")
         print("→ Use 'share push' to update shared")
-    elif file_is_newer(shared_mtime > local_mtime):
+    elif file_is_newer(shared_mtime, local_mtime):
         print("Status: ⚠ Shared is newer")
         print("→ Use 'share pull' to update local")
     else:
@@ -492,9 +492,9 @@ def cmd_status():
         local_mtime = local_file.stat().st_mtime
         shared_mtime = shared_file.stat().st_mtime
 
-        if file_is_newer(local_mtime > shared_mtime):
+        if file_is_newer(local_mtime, shared_mtime):
             need_push.append(local_file)
-        elif file_is_newer(shared_mtime > local_mtime):
+        elif file_is_newer(shared_mtime, local_mtime):
             need_pull.append(local_file)
         else:
             synced.append(local_file)
