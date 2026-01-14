@@ -1056,6 +1056,7 @@ Customization:
         preserving their relative path under SHARE_PATH.
 
 Commands:
+  <path>               A shortcut for 'share sync <path>'. Works only for a single path.
   list                 List all files in shared directory.
   put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
@@ -1067,6 +1068,8 @@ Commands:
   syncall              Sync all files by copying whichever is newer.
   check <path> [...]   Check sync status of file(s). If input is a directory, check all files under it.
   rm <path> [...]      Remove file(s) from shared location. If input is a directory, remove all files under it.
+  audit <path> [...]   Audit local directory to verify synced files. If input is a directory, audit all files under it.
+  auditall             Audit entire shared directory to verify synced files.
   status [dir ...]     Show status of entire shared directory or local directory if specified.
 
 Examples:

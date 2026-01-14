@@ -63,6 +63,8 @@ share sync <path> [...]      # Sync by copying whichever is newer. If input is a
 share syncall                # Sync all files by copying whichever is newer.
 share check <path> [...]     # Check sync status of file(s). If input is a directory, check all files under it.
 share rm <path> [...]        # Remove file(s) from shared location. If input is a directory, remove all files under it.
+share audit <path> [...]     # Audit local file(s) to check on files marked as synced. If input is a directory, audit all files under it.
+share auditall               # Audit entire shared directory to verify synced files.
 share status [dir ...]       # Show status of local directory (or directories). If no dir specified, show status of all tracked files.
 ```
 
