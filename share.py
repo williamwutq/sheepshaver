@@ -31,6 +31,7 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 import argparse
+import hashlib
 import fnmatch
 
 # Load SHARE_PATH from ~/.sharepath if exists, else None
@@ -851,6 +852,181 @@ def cmd_status_local(dirs, **kwargs):
     return 0
 
 
+def cmd_audit_all(**kwargs):
+    """Audit shared directory to check on files marked as synced"""
+    if SHARE_PATH is None:
+        if not kwargs.get('suppress_critical', False):
+            print("Error: SHARE_PATH is not set. Cannot audit.")
+        return 1
+    
+    synced = []
+
+    # Walk through shared directory
+    for shared_file in SHARED_ROOT.rglob('*'):
+        if not shared_file.is_file():
+            continue
+
+        # Reconstruct local path
+        relative = shared_file.relative_to(SHARED_ROOT)
+        if SHARE_PATH:
+            local_file = SHARE_PATH / relative
+        else:
+            local_file = Path(relative)
+
+        if not local_file.exists():
+            continue
+
+        local_mtime = local_file.stat().st_mtime
+        shared_mtime = shared_file.stat().st_mtime
+
+        if not file_is_newer(local_mtime, shared_mtime) and not file_is_newer(shared_mtime, local_mtime):
+            synced.append(local_file)   
+
+    if not synced:
+        print("No synced files found")
+        return 0
+    else:
+        print(f"Auditing {len(synced)} synced files...\n")
+    
+    mismatch = []
+    match = []
+
+    for f in synced:
+        # Audit content by comparing hashes
+        shared_path = get_shared_path(f)
+        if shared_path is None:
+            continue
+        local_hash = hashlib.sha256()
+        shared_hash = hashlib.sha256()
+        with open(f, 'rb') as lf, open(shared_path, 'rb') as sf:
+            while True:
+                ldata = lf.read(65536)
+                sdata = sf.read(65536)
+                if not ldata and not sdata:
+                    break
+                local_hash.update(ldata)
+                shared_hash.update(sdata)
+        if local_hash.hexdigest() != shared_hash.hexdigest():
+            mismatch.append(f)
+        else:
+            match.append(f)
+
+    if match:
+        print(f"✓ Verified: {len(match)} files")
+        if not kwargs.get('suppress_extra', False):
+            for f in match[:5]:
+                print(f"  {f}")
+            if len(match) > 5:
+                print(f"  ... and {len(match) - 5} more")
+            print()
+    
+    if mismatch:
+        print(f"⚠ Mismatch: {len(mismatch)} files\n")
+        if not kwargs.get('suppress_warning', False):
+            print("  Since share cannot determine which version is correct,")
+            print("  please manually resolve the mismatch by inspecting both local and shared versions.")
+            print("  If you believe the shared version is correct, you can use 'share get' to overwrite local.")
+            print("  If you believe the local version is correct, you can use 'share put' to overwrite shared.")
+            print()
+        if not kwargs.get('suppress_extra', False):
+            for f in mismatch:
+                print(f"  {f}")
+            print()
+
+    return 0
+
+
+def cmd_audit(dirs, **kwargs):
+    """Audit local directories to check on files marked as synced"""
+    # This function is not implemented in this version
+    if not SHARED_ROOT.exists():
+        if not kwargs.get('suppress_critical', False):
+            print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
+        return 0
+    
+    synced = []
+
+    for dir in dirs:
+        # Check existence
+        if not Path(dir).exists():
+            if not kwargs.get('suppress_error', False):
+                print(f"Error: Local directory does not exist: {dir}")
+            continue
+        if not Path(dir).is_dir():
+            if not kwargs.get('suppress_error', False):
+                print(f"Error: Not a directory: {dir}")
+            continue
+        for local_file in Path(dir).rglob('*'):
+            if not local_file.is_file():
+                continue
+
+            shared_path = get_shared_path(local_file)
+            if shared_path is None:
+                continue
+
+            if not shared_path.exists():
+                continue
+
+            local_mtime = local_file.stat().st_mtime
+            shared_mtime = shared_path.stat().st_mtime
+
+            if not file_is_newer(local_mtime, shared_mtime) and not file_is_newer(shared_mtime, local_mtime):
+                synced.append(local_file)
+
+    if not synced:
+        print("No synced files found")
+        return 0
+    else:
+        print(f"Auditing {len(synced)} synced files...\n")
+    
+    mismatch = []
+    match = []
+
+    for f in synced:
+        # Audit content by comparing hashes
+        shared_path = get_shared_path(f)
+        if shared_path is None:
+            continue
+        local_hash = hashlib.sha256()
+        shared_hash = hashlib.sha256()
+        with open(f, 'rb') as lf, open(shared_path, 'rb') as sf:
+            while True:
+                ldata = lf.read(65536)
+                sdata = sf.read(65536)
+                if not ldata and not sdata:
+                    break
+                local_hash.update(ldata)
+                shared_hash.update(sdata)
+        if local_hash.hexdigest() != shared_hash.hexdigest():
+            mismatch.append(f)
+        else:
+            match.append(f)
+
+    if match:
+        print(f"✓ Verified: {len(match)} files")
+        if not kwargs.get('suppress_extra', False):
+            for f in match[:5]:
+                print(f"  {f}")
+            if len(match) > 5:
+                print(f"  ... and {len(match) - 5} more")
+            print()
+
+    if mismatch:
+        print(f"⚠ Mismatch: {len(mismatch)} files\n")
+        if not kwargs.get('suppress_warning', False):
+            print("  Since share cannot determine which version is correct,")
+            print("  please manually resolve the mismatch by inspecting both local and shared versions.")
+            print("  If you believe the shared version is correct, you can use 'share get' to overwrite local.")
+            print("  If you believe the local version is correct, you can use 'share put' to overwrite shared.")
+            print()
+        if not kwargs.get('suppress_extra', False):
+            for f in mismatch:
+                print(f"  {f}")
+            print()
+
+    return 0
+
+
 def cmd_list(**kwargs):
     """List all files in shared directory"""
     if not SHARED_ROOT.exists():
@@ -937,6 +1113,8 @@ Examples:
         return cmd_sync_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'list':
         return cmd_list(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+    elif command == 'auditall':
+        return cmd_audit_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
 
@@ -950,6 +1128,7 @@ Examples:
         'check': cmd_check,
         'rm': cmd_remove,
         'remove': cmd_remove,
+        'audit': cmd_audit,
     }
 
     if command not in commands:
