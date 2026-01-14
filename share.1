@@ -6,6 +6,14 @@ share \- sync files between local filesystem and a shared directory (support mul
 .I command
 .RI [ path ... ]
 .RI [ options ... ]
+.br
+Call the specified command on the given path(s) with optional flags.
+.br
+.br
+.B share
+.I path
+.br
+A shortcut for 'share sync <path>'. Works only for a single path.
 .SH DESCRIPTION
 .B share
 is a utility to synchronize files between a local directory tree and a shared directory, preserving relative paths. It is useful for sharing files between different users or systems.
@@ -83,12 +91,19 @@ Check sync status of file(s).
 .B rm <path> [...]
 Remove file(s) from shared location.
 .TP
+.B audit <path> [...]
+Audit local directory to verify synced files. If input is a directory, audit all files under it.
+.TP
+.B auditall
+Audit entire shared directory to verify synced files.
+.TP
 .B status [dir ...]
 Show status of entire shared directory or local directory if specified.
 
 .SH EXAMPLES
 .nf
 share put rust/cargo.toml
+share README.md
 share push rust/cargo.toml src/main.rs
 share check rust/cargo.toml src/main.rs
 share list
