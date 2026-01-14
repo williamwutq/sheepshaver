@@ -25,10 +25,10 @@ curl -fsSL "$WEB_PATH/share.1" -o share.1
 
 # Move executable to /usr/local/bin
 echo "Installing share utility to /usr/local/bin/share..."
-sudo cp ${EXECUTABLE_PATH} /usr/local/bin/share
+sudo mv ${EXECUTABLE_PATH} /usr/local/bin/share
 sudo chmod +x /usr/local/bin/share
 
 # Move man page to /usr/local/share/man/man1
-sudo cp share.1 /usr/local/share/man/man1/share.1
+sudo mv share.1 /usr/local/share/man/man1/share.1
 
 echo "Installation complete. You can now use the 'share' command."
