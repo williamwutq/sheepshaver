@@ -85,6 +85,12 @@ def file_exists_and_valid(path):
     return p.exists() and p.is_file()
 
 
+def path_exists_and_valid(path):
+    """Check if path exists and is a file or directory"""
+    p = Path(path)
+    return p.exists() and (p.is_file() or p.is_dir())
+
+
 def file_is_newer(time1, time2):
     """Check if time1 is newer than time2 with 1 second tolerance"""
     return (time1 - time2) > 1  # 1 second tolerance
@@ -947,6 +953,8 @@ Examples:
     }
 
     if command not in commands:
+        if path_exists_and_valid(command) and command not in ['.', '..']:
+            return cmd_sync(command, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
         print(f"Error: Unknown command '{command}'")
         print("Use 'share --help' for usage information")
         return 1
