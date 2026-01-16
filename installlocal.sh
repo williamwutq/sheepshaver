@@ -18,6 +18,8 @@ if [ ! -f "$EXECUTABLE_PATH" ]; then
             chmod +x install.sh
         fi
         ./install.sh
+        rm install.sh
+        exit 0
     else
         echo "Installation aborted."
         exit 1
@@ -35,6 +37,8 @@ if [ ! -f "share.1" ]; then
             chmod +x install.sh
         fi
         ./install.sh
+        rm install.sh
+        exit 0
     else
         echo "Installation aborted."
         exit 1
