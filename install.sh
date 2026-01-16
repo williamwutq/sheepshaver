@@ -17,7 +17,7 @@ if [ "$SHARE_TYPE" == "python" ]; then
 fi
 
 # Download share.py and share.1 using curl
-echo "Downloading share.py..."
+echo "Downloading $EXECUTABLE_PATH..."
 curl -fsSL "$WEB_PATH/$EXECUTABLE_PATH" -o ${EXECUTABLE_PATH}
 
 echo "Downloading share.1..."
