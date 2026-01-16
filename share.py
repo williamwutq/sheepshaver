@@ -1044,6 +1044,33 @@ def cmd_list(**kwargs):
     return 0
 
 
+def cmd_info(**kwargs):
+    """Show configuration info"""
+    print(f"SHARE_PATH: {SHARE_PATH if SHARE_PATH else 'Not set'}")
+    print(f"SHARED_ROOT: {SHARED_ROOT}")
+    print()
+    if not kwargs.get('suppress_critical', False):
+        printed_warning = False
+        if SHARE_PATH is None:
+            print("Warning: SHARE_PATH is not set or does not exist.")
+            printed_warning = True
+        if not SHARE_PATH.exists():
+            print("Warning: SHARE_PATH does not exist.")
+            printed_warning = True
+        if not SHARED_ROOT.exists():
+            print("Warning: SHARED_ROOT does not exist.")
+            printed_warning = True
+        if printed_warning:
+            print()
+    
+    if not kwargs.get('suppress_extra', False):
+        print("To customize SHARE_PATH and SHARED_ROOT, create the following files:")
+        print("  ~/.sharepath  - contains the absolute path for SHARE_PATH")
+        print("  ~/.shareroot  - contains the absolute path for SHARED_ROOT")
+        print()
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
                 description='Share utility - Sync files between local and shared directory (support multiple files and directories)',
@@ -1057,6 +1084,7 @@ Customization:
 
 Commands:
   <path>               A shortcut for 'share sync <path>'. Works only for a single path.
+  info                 Show configuration information.
   list                 List all files in shared directory.
   put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
@@ -1118,6 +1146,8 @@ Examples:
         return cmd_list(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'auditall':
         return cmd_audit_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+    elif command == 'info':
+        return cmd_info(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
 

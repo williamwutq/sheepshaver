@@ -52,6 +52,7 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 ## Usage
 ```
 share <path>                 # A shortcut for 'share sync <path>'. Works only for a single path.
+share info                   # Show configuration information.
 share list                   # List all files in shared directory.
 share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
