@@ -1196,6 +1196,38 @@ def cmd_auto(**kwargs):
     return 0
 
 
+def cmd_config_path(new_sharepath):
+    """Configure SHARE_PATH"""
+    global SHARE_PATH
+    path = Path(new_sharepath).expanduser().resolve()
+    if not path.exists() or not path.is_dir():
+        print(f"Error: Specified SHARE_PATH does not exist or is not a directory: {path}")
+        return 1
+    SHARE_PATH = path
+    # Save to ~/.sharepath
+    config_file = Path.home() / '.sharepath'
+    with open(config_file, 'w') as f:
+        f.write(str(SHARE_PATH))
+    print(f"✓ SHARE_PATH set to: {SHARE_PATH}")
+    return 0
+
+
+def cmd_config_root(new_shareroot):
+    """Configure SHARED_ROOT"""
+    global SHARED_ROOT
+    path = Path(new_shareroot).expanduser().resolve()
+    if not path.exists() or not path.is_dir():
+        print(f"Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
+        return 1
+    SHARED_ROOT = path
+    # Save to ~/.shareroot
+    config_file = Path.home() / '.shareroot'
+    with open(config_file, 'w') as f:
+        f.write(str(SHARED_ROOT))
+    print(f"✓ SHARED_ROOT set to: {SHARED_ROOT}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
                 description='Share utility - Sync files between local and shared directory (support multiple files and directories)',
@@ -1212,6 +1244,8 @@ Commands:
   info                 Show configuration information.
   auto                 Perform automatic actions based on current directory context.
   list                 List all files in shared directory.
+  config path <path>   Set SHARE_PATH to specified path. This is the local root.
+  config root <path>   Set SHARED_ROOT to specified path. This is the shared root.
   put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
   pushall              Push all local files to shared if local is newer.
@@ -1288,6 +1322,16 @@ Examples:
     # Commands that don't require a file argument
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
+    elif command == 'config' and len(file_paths) >= 2:
+        subcommand = file_paths[0].lower()
+        path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
+        if subcommand == 'path':
+            return cmd_config_path(path_arg)
+        elif subcommand == 'root':
+            return cmd_config_root(path_arg)
+        else:
+            print(f"Error: Unknown config sub-command '{subcommand}'")
+            return 1
     elif command == 'pushall':
         return cmd_push_all(**opts)
     elif command == 'pullall':
