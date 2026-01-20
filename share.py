@@ -1097,7 +1097,7 @@ def cmd_info(**kwargs):
         if SHARE_PATH is None:
             print(f"{print_prefix}Warning: SHARE_PATH is not set or does not exist.")
             printed_warning = True
-        if not SHARE_PATH.exists():
+        elif not SHARE_PATH.exists():
             print(f"{print_prefix}Warning: SHARE_PATH does not exist.")
             printed_warning = True
         if not SHARED_ROOT.exists():
@@ -1146,7 +1146,7 @@ def cmd_auto(**kwargs):
                 print(f"{print_prefix}No action taken.")
             return 0
     # If in a shared subdirectory, run audit on that directory
-    if SHARED_ROOT in current.parents or current == SHARED_ROOT:
+    if SHARED_ROOT in current.parents:
         relative = current.relative_to(SHARED_ROOT)
         local_equiv = SHARE_PATH / relative if SHARE_PATH else None
         if local_equiv and local_equiv.exists() and any(local_equiv.rglob('*')):
@@ -1256,6 +1256,7 @@ Examples:
     suppress_error = args.suppress_error or args.suppress
     suppress_critical = args.suppress_critical
     ignore_patterns = args.ignore if args.ignore else []
+    yes = args.yes
     preview = False
     print_prefix = ''
 
@@ -1265,7 +1266,7 @@ Examples:
     if command == 'preview':
         # The first "file" is actually the command
         if len(file_paths) == 0:
-            print("Error: 'preview' require a sub-command")
+            print("Error: 'preview' requires a sub-command")
             return 1
         command = file_paths[0].lower()
         file_paths = file_paths[1:]
@@ -1280,6 +1281,7 @@ Examples:
         ignore_patterns=ignore_patterns,
         preview=preview,
         print_prefix=print_prefix,
+        yes=yes,
     )
 
     # Commands that don't require a file argument
@@ -1300,7 +1302,7 @@ Examples:
     elif command == 'auto':
         return cmd_auto(**opts)
     elif command == 'status' and len(file_paths) > 0:
-        return cmd_status_local(**opts)
+        return cmd_status_local(file_paths, **opts)
 
     # Dispatch to appropriate command
     commands = {
