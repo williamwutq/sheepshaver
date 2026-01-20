@@ -95,6 +95,16 @@ GPLv2 or later
 ## Author
 William Wu, 2026
 
+## More On: The Name
+
+The name "sheepshaver" is inspired by the classic Macintosh emulator "SheepShaver," which allowed users to run older Mac OS versions on modern hardware. The origial inspiration behind the utility was to facilitate file sharing between dual-boot systems, similar to how SheepShaver bridged the gap between old and new Mac environments. The purpose of this utility is now extended to general local file sharing scenarios, but the name still reflects the philosophy of bridging different environments in a simple and effective way.
+
+## More On: Python
+
+Currently, sheepshaver is implemented in Python for its ease of use, readability, and cross-platform compatibility. This make writing and maintaining the codebase simpler, especially for a command-line utility that needs to run on various Unix-like systems.
+
+In the future, if performance becomes a concern or if there is a need for tighter integration with system-level features, it will be rewriten in Rust. However, most users have python installed by default and the python inplementation have not shown any significant performance issues for typical use cases.
+
 ## More On: Why This Exists
 
 This is written to solve a specific kind of problem that comes up often on Unix-like systems, but is rarely addressed directly:  
