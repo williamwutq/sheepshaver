@@ -187,6 +187,8 @@ def recursive_apply_noskip(func, path, **kwargs):
                         new_patterns.append(pattern)
             ignore_patterns = ignore_patterns + new_patterns
             kwargs['ignore_patterns'] = ignore_patterns
+        new_print_prefix = kwargs.get('print_prefix', '') + '  '
+        kwargs['print_prefix'] = new_print_prefix
         for sub_path in p.iterdir():
             # Check against ignore patterns using fnmatch
             if any(fnmatch.fnmatch(sub_path.name, pattern) or fnmatch.fnmatch(sub_path, pattern) for pattern in ignore_patterns):
@@ -711,6 +713,7 @@ def cmd_remove(local_file, **kwargs):
 
 def cmd_status(**kwargs):
     """Show status of entire shared directory"""
+    print_prefix = kwargs.get('print_prefix', '')
     if not SHARED_ROOT.exists():
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
@@ -753,8 +756,6 @@ def cmd_status(**kwargs):
             synced.append(local_file)
 
     total = len(synced) + len(need_push) + len(need_pull) + len(only_shared)
-
-    print_prefix = kwargs.get('print_prefix', '')
     print(f"{print_prefix}Shared directory: {SHARED_ROOT}")
     print(f"{print_prefix}Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
     if total > 0:
