@@ -1134,26 +1134,26 @@ def cmd_auto(**kwargs):
     # If in shared directory, run auditall
     if SHARED_ROOT in current.parents or current == SHARED_ROOT:
         return cmd_audit_all(**kwargs)
-    # If in an empty directory and contents exists in shared, run pullall
+    # If in an empty directory and contents exists in shared, run pull
     if current.is_dir() and not any(current.iterdir()):
         relative = current.relative_to(SHARE_PATH) if SHARE_PATH and current.is_relative_to(SHARE_PATH) else None
         if relative:
             shared_equiv = SHARED_ROOT / relative
             if shared_equiv.exists() and any(shared_equiv.iterdir()):
                 if ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
-                    return cmd_pull_all(**kwargs)
+                    return cmd_pull(current, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
                         print(f"{print_prefix}No action taken.")
                     return 0
-    # If in a local directory but no file in shared, run pushall
+    # If in a local directory but no file in shared, run push
     if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
         relative = current.relative_to(SHARE_PATH)
         shared_equiv = SHARED_ROOT / relative
         if not shared_equiv.exists() or not any(shared_equiv.iterdir()):
             if any(current.rglob('*')):
                 if ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
-                    return cmd_push_all(**kwargs)
+                    return cmd_push(current, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
                         print(f"{print_prefix}No action taken.")
