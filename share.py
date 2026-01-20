@@ -1118,6 +1118,7 @@ def cmd_auto(**kwargs):
     """Automatic Actions"""
     # Cases: If SHARE_PATH or SHARED_ROOT is not set, do nothing
     print_prefix = kwargs.get('print_prefix', '')
+    yes = kwargs.get('yes', False)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot perform automatic actions.")
@@ -1130,17 +1131,38 @@ def cmd_auto(**kwargs):
     home = Path.home()
     current = Path.cwd()
     if current == home:
-        return cmd_sync_all(**kwargs)
+        if yes or ask_yes_no(f"{print_prefix}Sync all files?"):
+            return cmd_sync_all(**kwargs)
+        else:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{print_prefix}No action taken.")
+            return 0
     # If in shared directory, run auditall
+    if current == SHARED_ROOT:
+        if yes or ask_yes_no(f"{print_prefix}Audit all synced files in the shared directory?"):
+            return cmd_audit_all(**kwargs)
+        else:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{print_prefix}No action taken.")
+            return 0
+    # If in a shared subdirectory, run audit on that directory
     if SHARED_ROOT in current.parents or current == SHARED_ROOT:
-        return cmd_audit_all(**kwargs)
+        relative = current.relative_to(SHARED_ROOT)
+        local_equiv = SHARE_PATH / relative if SHARE_PATH else None
+        if local_equiv and local_equiv.exists() and any(local_equiv.rglob('*')):
+            if yes or ask_yes_no(f"{print_prefix}Audit all synced files in the current shared subdirectory?"):
+                return cmd_audit([local_equiv], **kwargs)
+            else:
+                if not kwargs.get('suppress_extra', False):
+                    print(f"{print_prefix}No action taken.")
+                return 0
     # If in an empty directory and contents exists in shared, run pull
     if current.is_dir() and not any(current.iterdir()):
         relative = current.relative_to(SHARE_PATH) if SHARE_PATH and current.is_relative_to(SHARE_PATH) else None
         if relative:
             shared_equiv = SHARED_ROOT / relative
             if shared_equiv.exists() and any(shared_equiv.iterdir()):
-                if ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
+                if yes or ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
                     return cmd_pull(current, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
@@ -1152,7 +1174,7 @@ def cmd_auto(**kwargs):
         shared_equiv = SHARED_ROOT / relative
         if not shared_equiv.exists() or not any(shared_equiv.iterdir()):
             if any(current.rglob('*')):
-                if ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
+                if yes or ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
                     return cmd_push(current, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
@@ -1161,7 +1183,7 @@ def cmd_auto(**kwargs):
     # Otherwise, run sync on the current directory if it's under SHARE_PATH
     if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
         if any(current.rglob('*')):
-            if ask_yes_no(f"{print_prefix}Sync all files in the current directory with shared?"):
+            if yes or ask_yes_no(f"{print_prefix}Sync all files in the current directory with shared?"):
                 return cmd_sync(current, **kwargs)
             else:
                 if not kwargs.get('suppress_extra', False):
@@ -1223,6 +1245,7 @@ Examples:
     parser.add_argument('-ncrt', '-scrt', '--suppress-critical', '--no-critical', action='store_true', help='Suppress critical error messages')
     parser.add_argument('-s', '-no', '--suppress', '--no', action='store_true', help='Suppress all messages except critical errors')
     parser.add_argument('--ignore', '-i', action='append', help='Add ignore pattern')
+    parser.add_argument('--yes', '-y', action='store_true', help='Automatic yes to prompts (for auto command)')
 
     if len(sys.argv) == 1:
         parser.print_usage()

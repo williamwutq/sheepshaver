@@ -48,6 +48,7 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 - `--suppress-critical` / `--no-critical` / `-ncrt` / `-scrt`: Suppress critical error messages
 - `--suppress` / `--no` / `-no` / `-s`: Suppress all messages except critical errors
 - `--ignore` / `-i`: Add ignore pattern (can be used multiple times)
+- `--yes` / `-y`: Automatic yes to prompts (for auto command)
 
 ## Usage
 ```
