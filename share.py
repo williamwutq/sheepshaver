@@ -1132,6 +1132,7 @@ Commands:
   audit <path> [...]   Audit local directory to verify synced files. If input is a directory, audit all files under it.
   auditall             Audit entire shared directory to verify synced files.
   status [dir ...]     Show status of entire shared directory or local directory if specified.
+  preview <cmd> [...]  Preview the specified command without making changes.
 
 Examples:
   share put rust/cargo.toml
