@@ -1322,7 +1322,10 @@ Examples:
     # Commands that don't require a file argument
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
-    elif command == 'config' and len(file_paths) >= 2:
+    elif command == 'config':
+        if len(file_paths) < 2:
+            print("Error: 'config' requires a sub-command and a path argument")
+            return 1
         subcommand = file_paths[0].lower()
         path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
         if subcommand == 'path':
