@@ -78,6 +78,16 @@ def format_time(timestamp):
         return f"{int(delta/3600)}h ago"
     else:
         return f"{int(delta/86400)}d ago"
+    
+
+def ask_yes_no(prompt):
+    """Prompt user for yes/no response"""
+    while True:
+        resp = input(f"{prompt} (y/n): ").strip().lower()
+        if resp in ('y', 'yes'):
+            return True
+        elif resp in ('n', 'no'):
+            return False
 
 
 def file_exists_and_valid(path):
@@ -1104,6 +1114,65 @@ def cmd_info(**kwargs):
     return 0
 
 
+def cmd_auto(**kwargs):
+    """Automatic Actions"""
+    # Cases: If SHARE_PATH or SHARED_ROOT is not set, do nothing
+    print_prefix = kwargs.get('print_prefix', '')
+    if SHARE_PATH is None:
+        if not kwargs.get('suppress_critical', False):
+            print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot perform automatic actions.")
+        return 1
+    if not SHARED_ROOT.exists():
+        if not kwargs.get('suppress_critical', False):
+            print(f"{print_prefix}Error: SHARED_ROOT does not exist. Cannot perform automatic actions.")
+        return 1
+    # If in home directory, run syncall
+    home = Path.home()
+    current = Path.cwd()
+    if current == home:
+        return cmd_sync_all(**kwargs)
+    # If in shared directory, run auditall
+    if SHARED_ROOT in current.parents or current == SHARED_ROOT:
+        return cmd_audit_all(**kwargs)
+    # If in an empty directory and contents exists in shared, run pullall
+    if current.is_dir() and not any(current.iterdir()):
+        relative = current.relative_to(SHARE_PATH) if SHARE_PATH and current.is_relative_to(SHARE_PATH) else None
+        if relative:
+            shared_equiv = SHARED_ROOT / relative
+            if shared_equiv.exists() and any(shared_equiv.iterdir()):
+                if ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
+                    return cmd_pull_all(**kwargs)
+                else:
+                    if not kwargs.get('suppress_extra', False):
+                        print(f"{print_prefix}No action taken.")
+                    return 0
+    # If in a local directory but no file in shared, run pushall
+    if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
+        relative = current.relative_to(SHARE_PATH)
+        shared_equiv = SHARED_ROOT / relative
+        if not shared_equiv.exists() or not any(shared_equiv.iterdir()):
+            if any(current.rglob('*')):
+                if ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
+                    return cmd_push_all(**kwargs)
+                else:
+                    if not kwargs.get('suppress_extra', False):
+                        print(f"{print_prefix}No action taken.")
+                    return 0
+    # Otherwise, run sync on the current directory if it's under SHARE_PATH
+    if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
+        if any(current.rglob('*')):
+            if ask_yes_no(f"{print_prefix}Sync all files in the current directory with shared?"):
+                return cmd_sync(current, **kwargs)
+            else:
+                if not kwargs.get('suppress_extra', False):
+                    print(f"{print_prefix}No action taken.")
+                return 0
+    # No applicable automatic action
+    if not kwargs.get('suppress_extra', False):
+        print(f"{print_prefix}No automatic action applicable in the current context.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
                 description='Share utility - Sync files between local and shared directory (support multiple files and directories)',
@@ -1118,6 +1187,7 @@ Customization:
 Commands:
   <path>               A shortcut for 'share sync <path>'. Works only for a single path.
   info                 Show configuration information.
+  auto                 Perform automatic actions based on current directory context.
   list                 List all files in shared directory.
   put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
@@ -1204,6 +1274,8 @@ Examples:
         return cmd_audit_all(**opts)
     elif command == 'info':
         return cmd_info(**opts)
+    elif command == 'auto':
+        return cmd_auto(**opts)
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(**opts)
 
