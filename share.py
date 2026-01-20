@@ -1324,14 +1324,20 @@ Examples:
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
     elif command == 'config':
-        if len(file_paths) < 2:
-            print("Error: 'config' requires a sub-command and a path argument")
+        if len(file_paths) < 1:
+            print("Error: 'config' requires a sub-command")
             return 1
         subcommand = file_paths[0].lower()
         path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
         if subcommand == 'path':
+            if not path_arg:
+                print("Error: 'config path' requires a path argument")
+                return 1
             return cmd_config_path(path_arg)
         elif subcommand == 'root':
+            if not path_arg:
+                print("Error: 'config root' requires a path argument")
+                return 1
             return cmd_config_root(path_arg)
         elif subcommand == 'show':
             return cmd_info(suppress_extra=True, suppress_critical=True)
