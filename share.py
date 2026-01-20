@@ -157,7 +157,7 @@ def recursive_apply_skips(func, path, **kwargs):
             # Skip private-looking files
             if looks_like_private(sub_path.name):
                 if not kwargs.get('suppress_extra', False):
-                    print(f"⚠ {sub_path} looks like private; skipping.")
+                    print(f"{new_print_prefix}⚠ {sub_path} looks like private; skipping.")
                 continue
             if sub_path.is_file() or sub_path.is_dir():
                 res += func(sub_path, **kwargs)
