@@ -94,3 +94,79 @@ GPLv2 or later
 
 ## Author
 William Wu, 2026
+
+## More On: Why This Exists
+
+This is written to solve a specific kind of problem that comes up often on Unix-like systems, but is rarely addressed directly:  
+moving files **locally** and **predictably** between two places on the same machine or storage device without the overhead of version control or networked file systems.
+
+Sure, running a bunch of `mv` or `cp` commands can work, but it quickly becomes tedious and error-prone, especially when dealing with many files or complex directory structures. Existing tools like `rsync` are powerful but they are not only overkill for simple use cases, but also often not configurable enough to handle specific local sharing scenarios without additional scripting.
+
+The problem with version control systems like Git, Mercurial, or SVN is that they introduce complexity and overhead that is unnecessary for simple file sharing tasks and don't work well for binary files or large files that change frequently. They offer tools to resolve conflicts, manage branches, and track history, which are not needed when the goal is simply to keep files in sync between two locations and conflicts are rare or non-existent.
+
+The problem with networked file systems or cloud storage solutions is that they require network connectivity, setup, and maintenance. They also often introduce latency and reduce privacy, which may not be acceptable in certain scenarios. sheepshaver is entirely local and requires no network setup beyound mounting devices.
+
+This tool assumes the filesystem is the source of truth, and that the user knows when files should be shared. Actions are explicit and no background processes run. There is no hidden database or index, and everything can be inspected with standard filesystem tools.
+
+The tool is for developers and power users who prefer command line interfaces and value simplicity, transparency, and control over convenience or automation. sheepshaver follows the Unix philosophy of building small, focused, well-documented tools that do one thing well and can be combined with other tools. This is why a man page is provided and the interface is currently command line only. A GUI or TUI application could be built on top of this tool if desired.
+
+### Dual-boot systems
+
+On dual-boot machines (for example macOS to Linux or Linux to Linux):
+
+- A single partition is often shared between operating systems, often formatted as exFAT, FAT32, or NTFS
+- The same files are edited from different environments
+- Paths and directory layouts need to stay identical
+- Network services, repositories, or background sync are unnecessary because the files are on the same physical device and they are never accessed simultaneously
+
+sheepshaver treats the shared partition as just another filesystem tree.  
+Files are copied by relative path, timestamps are compared, and actions are explicit.
+
+Once mounted, it is recommended to create a `shared` directory in the shared partition, and set that as the SHARED_ROOT using the `.shareroot` configuration file. Nothing runs on the background and no further configuration is needed.
+
+### Sharing files between users on one machine
+
+On multi-user systems such as servers, lab machines, or shared workstations:
+
+- Users need access to common data
+- Some files are large, binary, or transient
+- Version control is often unnecessary or impractical
+- Network services or cloud storage cannot be used due to security or privacy concerns
+
+sheepshaver allows users to easily push and pull files to a shared directory that is accessible by multiple users. Each user can have their own local root directory, and the shared root can be a common directory on the system. There is no central index, no per-user database, and no long-running process. Everything can be inspected with standard tools.
+
+### External drives and removable media
+
+On systems where external drives or removable media are used for file sharing:
+
+- External SSDs
+- USB drives
+- Offline or air-gapped systems
+- Periodic, intentional copying
+
+Often the content needed for copying is not continuously changing, so copying entire directories back and forth is inefficient. Often, not all files in a directory can be shared, so selective copying is needed. sheepshaver allows users to easily manage which files are shared to and from the external drive, using simple commands to push, pull, and sync files as needed.
+
+sheepshaver stores no additional metadata beyond what is already present in the filesystem (timestamps, paths). This makes it easy to use with any file system and removable media, as there is no need to maintain a separate database or index.
+
+### How sheepshaver approaches the problem
+
+sheepshaver is built around a few simple ideas:
+
+- The filesystem is powerful and sufficient
+- Explicitness is better than magic
+- Simplicity is a virtue
+- Compatibility arises from basic operations
+- Software should give transparency and freedom to the user
+
+In practice, this means:
+
+- Files live under well-defined roots
+- Relative paths are preserved
+- Most operations are decided using metadata
+- Expensive verification is explicit and opt-in
+- No daemon or background process runs
+- No hidden databases or indexes are created
+- Nothing happens unless the user asks for it
+- Commands are simple and composable
+- Released under a permissive license (GPLv2 or later)
+- Command line interface only, no GUI
