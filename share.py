@@ -97,8 +97,11 @@ def file_is_newer(time1, time2):
     return (time1 - time2) > 1  # 1 second tolerance
 
 
-def file_copy(src, dst):
+def file_copy(src, dst, **kwargs):
     """Copy file from src to dst"""
+    if kwargs.get('preview', False):
+        print(f"[Preview] Copying {src} to {dst}")
+        return
     shutil.copy2(src, dst) # copy2
     # Delete AppleDouble file corresponding to this file (if any)
     dst_path = Path(dst)
@@ -203,7 +206,7 @@ def cmd_put(local_file, **kwargs):
     shared_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        file_copy(local_path, shared_path)
+        file_copy(local_path, shared_path, **kwargs)
     except Exception as e:
         if not kwargs.get('suppress_error', False):
             print(f"Error: Failed to put {local_file} to shared: {e}")
@@ -231,7 +234,7 @@ def cmd_push(local_file, **kwargs):
     if not shared_path.exists():
         shared_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            file_copy(local_path, shared_path)
+            file_copy(local_path, shared_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to push {local_file} to shared: {e}")
@@ -245,7 +248,7 @@ def cmd_push(local_file, **kwargs):
 
     if file_is_newer(local_mtime, shared_mtime):
         try:
-            file_copy(local_path, shared_path)
+            file_copy(local_path, shared_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to push {local_file} to shared: {e}")
@@ -282,7 +285,7 @@ def cmd_push_all(**kwargs):
         if not remote_file.exists():
             remote_file.parent.mkdir(parents=True, exist_ok=True)
             try:
-                file_copy(local_path, remote_file)
+                file_copy(local_path, remote_file, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to push {local_file} to shared: {e}")
@@ -296,7 +299,7 @@ def cmd_push_all(**kwargs):
         shared_mtime = remote_file.stat().st_mtime
         if file_is_newer(local_mtime, shared_mtime):
             try:
-                file_copy(local_path, remote_file)
+                file_copy(local_path, remote_file, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to push {local_file} to shared: {e}")
@@ -328,7 +331,7 @@ def cmd_get(local_file, **kwargs):
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        file_copy(shared_path, local_path)
+        file_copy(shared_path, local_path, **kwargs)
     except Exception as e:
         if not kwargs.get('suppress_error', False):
             print(f"Error: Failed to get {local_file} from shared: {e}")
@@ -356,7 +359,7 @@ def cmd_pull(local_file, **kwargs):
     if not local_path.exists():
         local_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            file_copy(shared_path, local_path)
+            file_copy(shared_path, local_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to pull {local_file} from shared: {e}")
@@ -370,7 +373,7 @@ def cmd_pull(local_file, **kwargs):
 
     if file_is_newer(shared_mtime, local_mtime):
         try:
-            file_copy(shared_path, local_path)
+            file_copy(shared_path, local_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to pull {local_file} from shared: {e}")
@@ -408,7 +411,7 @@ def cmd_pull_all(**kwargs):
         if not local_path.exists():
             local_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                file_copy(shared_path, local_path)
+                file_copy(shared_path, local_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to pull {local_file} from shared: {e}")
@@ -422,7 +425,7 @@ def cmd_pull_all(**kwargs):
         shared_mtime = shared_path.stat().st_mtime
         if file_is_newer(shared_mtime, local_mtime):
             try:
-                file_copy(shared_path, local_path)
+                file_copy(shared_path, local_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to pull {local_file} from shared: {e}")
@@ -463,7 +466,7 @@ def cmd_sync(local_file, **kwargs):
     if not shared_exists:
         shared_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            file_copy(local_path, shared_path)
+            file_copy(local_path, shared_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to sync {local_file} to shared: {e}")
@@ -474,7 +477,7 @@ def cmd_sync(local_file, **kwargs):
     if not local_exists:
         local_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            file_copy(shared_path, local_path)
+            file_copy(shared_path, local_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to sync {local_file} from shared: {e}")
@@ -488,7 +491,7 @@ def cmd_sync(local_file, **kwargs):
 
     if file_is_newer(local_mtime, shared_mtime):
         try:
-            file_copy(local_path, shared_path)
+            file_copy(local_path, shared_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to sync {local_file} to shared: {e}")
@@ -497,7 +500,7 @@ def cmd_sync(local_file, **kwargs):
         return 0
     elif file_is_newer(shared_mtime, local_mtime):
         try:
-            file_copy(shared_path, local_path)
+            file_copy(shared_path, local_path, **kwargs)
         except Exception as e:
             if not kwargs.get('suppress_error', False):
                 print(f"Error: Failed to sync {local_file} from shared: {e}")
@@ -540,7 +543,7 @@ def cmd_sync_all(**kwargs):
         if not local_exists:
             local_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                file_copy(shared_path, local_path)
+                file_copy(shared_path, local_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to sync {local_file} from shared: {e}")
@@ -552,7 +555,7 @@ def cmd_sync_all(**kwargs):
         if not shared_exists:
             shared_path.parent.mkdir(parents=True, exist_ok=True)
             try:
-                file_copy(local_path, shared_path)
+                file_copy(local_path, shared_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to sync {local_file} to shared: {e}")
@@ -567,7 +570,7 @@ def cmd_sync_all(**kwargs):
 
         if file_is_newer(local_mtime, shared_mtime):
             try:
-                file_copy(local_path, shared_path)
+                file_copy(local_path, shared_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to sync {local_file} to shared: {e}")
@@ -576,7 +579,7 @@ def cmd_sync_all(**kwargs):
             count += 1
         elif file_is_newer(shared_mtime, local_mtime):
             try:
-                file_copy(shared_path, local_path)
+                file_copy(shared_path, local_path, **kwargs)
             except Exception as e:
                 if not kwargs.get('suppress_error', False):
                     print(f"Error: Failed to sync {local_file} from shared: {e}")
@@ -1143,27 +1146,46 @@ Examples:
     suppress_error = args.suppress_error or args.suppress
     suppress_critical = args.suppress_critical
     ignore_patterns = args.ignore if args.ignore else []
+    preview = False
 
     command = args.command.lower()
     file_paths = args.file
 
+    if command == 'preview':
+        # The first "file" is actually the command
+        if len(file_paths) == 0:
+            print("Error: 'preview' require a sub-command")
+            return 1
+        command = file_paths[0].lower()
+        file_paths = file_paths[1:]
+        preview = True
+
+    # Use a dict to avoid repetition
+    opts = dict(
+        suppress_extra=suppress_extra,
+        suppress_error=suppress_error,
+        suppress_critical=suppress_critical,
+        ignore_patterns=ignore_patterns,
+        preview=preview
+    )
+
     # Commands that don't require a file argument
     if command == 'status' and len(file_paths) == 0:
-        return cmd_status(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_status(**opts)
     elif command == 'pushall':
-        return cmd_push_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_push_all(**opts)
     elif command == 'pullall':
-        return cmd_pull_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_pull_all(**opts)
     elif command == 'syncall':
-        return cmd_sync_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_sync_all(**opts)
     elif command == 'list':
-        return cmd_list(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_list(**opts)
     elif command == 'auditall':
-        return cmd_audit_all(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_audit_all(**opts)
     elif command == 'info':
-        return cmd_info(suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_info(**opts)
     elif command == 'status' and len(file_paths) > 0:
-        return cmd_status_local(file_paths, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return cmd_status_local(**opts)
 
     # Dispatch to appropriate command
     commands = {
@@ -1180,7 +1202,7 @@ Examples:
 
     if command not in commands:
         if path_exists_and_valid(command) and command not in ['.', '..']:
-            return cmd_sync(command, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+            return cmd_sync(command, **opts)
         print(f"Error: Unknown command '{command}'")
         print("Use 'share --help' for usage information")
         return 1
@@ -1193,14 +1215,14 @@ Examples:
         # Multiple files
         res = 0
         for f in file_paths:
-            res += commands[command](f, suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+            res += commands[command](f, **opts)
         if res != 0:
             print(f"⚠ '{command}' completed with {res} errors")
             return 1
         return 0
     else:
         # Single file
-        return commands[command](file_paths[0], suppress_extra=suppress_extra, suppress_error=suppress_error, suppress_critical=suppress_critical, ignore_patterns=ignore_patterns)
+        return commands[command](file_paths[0], **opts)
 
 
 if __name__ == "__main__":
