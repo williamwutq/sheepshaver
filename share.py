@@ -1173,7 +1173,7 @@ def cmd_auto(**kwargs):
     if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
         relative = current.relative_to(SHARE_PATH)
         shared_equiv = SHARED_ROOT / relative
-        if not shared_equiv.exists() or not any(shared_equiv.iterdir()):
+        if not shared_equiv.exists() or (shared_equiv.exists() and not any(shared_equiv.iterdir())):
             if any(current.rglob('*')):
                 if yes or ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
                     return cmd_push(current, **kwargs)
