@@ -1084,7 +1084,7 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
-    parser.add_argument('-v', '--version', action='version', version='share utility version 1.3')
+    parser.add_argument('-v', '--version', action='version', version='share utility version 1.4')
     # Flags, --suppress-extra, --suppress-error, --suppress-critical:
     parser.add_argument('-next', '-sext', '--suppress-extra', '--no-extra', action='store_true', help='Suppress extra informational messages')
     parser.add_argument('-nerr', '-serr', '--suppress-error', '--no-error', action='store_true', help='Suppress error messages')
