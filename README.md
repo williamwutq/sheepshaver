@@ -86,6 +86,52 @@ share status
 share status rust src
 ```
 
+## Example Setup
+
+### With a constant shared directory for local sharing or dual-boot:
+Mount your shared partition (e.g., an exFAT or NTFS partition) to a known location, then set that as your SHARED_ROOT:
+
+```bash
+mount /dev/my_device /mnt/shared_drive
+share config root /mnt/shared_drive/shared_files
+```
+
+Then you can use `share put`, `share push`, `share sync`, etc. to manage files between your local directory and the shared partition.
+
+### Share with other users on a multi-user system:
+With sudo access, run:
+
+```bash
+sudo mkdir -p /usr/share/dump
+sudo chmod 1777 /usr/share/dump  # Make it world-writable with sticky bit
+share config root /usr/share/dump
+```
+
+For individual users, set their local root if necessary:
+
+```bash
+share config path ~/projects
+```
+
+Or they will be default to their home directory, which is usually acceptable.
+
+### Share with external drives or removable media:
+Mount your external drive to a known location, then set that as your SHARED_ROOT:
+
+```bash
+mount /dev/sdX1 /mnt/external_drive
+share config root /mnt/external_drive
+```
+
+Then you can use `share put`, `share push`, `share sync`, etc. to manage files between your local directory and the external drive.
+
+After finishing, unmount the drive safely:
+
+```bash
+umount /mnt/external_drive
+share config root ~/Shared/dump  # Reset shared root to default
+```
+
 ## Man Page
 A man page is included for detailed usage instructions. Access it via:
 ```

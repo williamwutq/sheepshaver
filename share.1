@@ -132,6 +132,43 @@ share status
 share status rust src
 .fi
 
+.SH EXAMPLE SETUP
+.SS With a constant shared directory for local sharing or dual-boot
+Mount your shared partition (e.g., an exFAT or NTFS partition) to a known location, then set that as your SHARED_ROOT:
+.nf
+	mount /dev/my_device /mnt/shared_drive
+	share config root /mnt/shared_drive/shared_files
+.fi
+You can now use \fBshare put\fR, \fBshare push\fR, \fBshare sync\fR, etc. to manage files between your local directory and the shared partition.
+
+.SS Share with other users on a multi-user system
+With sudo access, run:
+.nf
+	sudo mkdir -p /usr/share/dump
+	sudo chmod 1777 /usr/share/dump
+	share config root /usr/share/dump
+.fi
+For individual users, set their local root if necessary:
+.nf
+	share config path ~/projects
+.fi
+Or they will default to their home directory, which is usually acceptable.
+
+.SS Share with external drives or removable media
+Mount your external drive to a known location, then set that as your SHARED_ROOT:
+.nf
+	mount /dev/sdX1 /mnt/external_drive
+	share config root /mnt/external_drive
+.fi
+Then you can use \fBshare put\fR, \fBshare push\fR, \fBshare sync\fR, etc. to manage files between your local directory and the external drive.
+
+After finishing, unmount the drive safely:
+.nf
+	umount /mnt/external_drive
+	share config root ~/Shared/dump
+.fi
+Reset shared root to default if needed.
+
 .SH NOTES
 - Only files under SHARE_PATH are managed. Attempts to share files outside this path will be rejected.
 - The mapping preserves the relative path under SHARE_PATH in SHARED_ROOT.
