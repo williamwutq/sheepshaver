@@ -58,6 +58,7 @@ share auto                   # Perform automatic actions based on current direct
 share list                   # List all files in shared directory.
 share config path <path>     # Set SHARE_PATH to specified path. This is the local root.
 share config root <path>     # Set SHARED_ROOT to specified path. This is the shared root.
+share config show            # Show current configuration.
 share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
 share pushall                # Push all local files to shared if local is newer
