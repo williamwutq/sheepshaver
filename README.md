@@ -1,8 +1,8 @@
 # share (File Sharing Utility)
 
-A simple utility to sync files between a local directory tree and a shared directory, preserving relative paths. Useful for sharing files between different users or systems.
+A simple utility to sync files between a local directory tree and a shared directory, preserving relative paths. Useful for sharing files between different users or systems. This utility also work via SSH for remote file sharing, but that is not the primary use case.
 
-This is entirely local and does not require any network setup or cloud services. It only manages files under a configurable local root directory (SHARE_PATH) and syncs them to/from a shared root directory (SHARED_ROOT).
+This is entirely local and does not require any network setup or cloud services unless you want to. It only manages files under a configurable local root directory (SHARE_PATH) and syncs them to/from a shared root directory (SHARED_ROOT).
 
 ## Intention
 Personally, I run dual boot macOS and Linux on my laptop. I wanted a simple way to share files between the two OSes without relying on cloud services or complex network setups. This utility allows me to easily push and pull files to a shared directory that both OSes can access.
@@ -131,6 +131,30 @@ After finishing, unmount the drive safely:
 umount /mnt/external_drive
 share config root ~/Shared/dump  # Reset shared root to default
 ```
+
+### Share via SSH
+
+For sharing files with remote systems over SSH, set SHARED_ROOT to an SSH path:
+
+```bash
+share config root user@remote-host:/path/to/shared/directory
+```
+
+Then you can use individual file commands to transfer files to/from the remote system:
+
+```bash
+share put myfile.txt   # Upload file to remote
+share get myfile.txt   # Download file from remote
+share push myfile.txt  # Upload only if local is newer
+share pull myfile.txt  # Download only if remote is newer
+share sync myfile.txt  # Sync by copying whichever is newer
+share check myfile.txt # Check sync status
+share rm myfile.txt    # Remove file from remote
+```
+
+Note: Bulk operations (pushall, pullall, syncall, status, list, auditall) are not supported YET for remote SSH paths, as they require directory traversal that isn't easy to implement over SSH. Use individual file commands for remote sharing.
+
+Ensure you have SSH key authentication set up for passwordless transfers, and that the remote user has write access to the specified directory. If the SSH connection fails, appropriate error messages will be displayed.
 
 ## Man Page
 A man page is included for detailed usage instructions. Access it via:
