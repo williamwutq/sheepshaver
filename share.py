@@ -31,6 +31,7 @@ from pathlib import Path
 import shutil
 from datetime import datetime
 import argparse
+import subprocess
 import hashlib
 import fnmatch
 
@@ -108,19 +109,37 @@ def file_is_newer(time1, time2):
 
 
 def file_copy(src, dst, **kwargs):
-    """Copy file from src to dst"""
+    """Copy file from src to dst, supporting SSH via scp for remote paths"""
     print_prefix = kwargs.get('print_prefix', '')
     if kwargs.get('preview', False):
         return
-    shutil.copy2(src, dst) # copy2
-    # Delete AppleDouble file corresponding to this file (if any)
-    dst_path = Path(dst)
-    apple_double = dst_path.parent / ("._" + dst_path.name)
-    if apple_double.exists():
+    
+    src_str = str(src)
+    dst_str = str(dst)
+    
+    # Check if src or dst looks like a remote SSH path (contains '@' and ':')
+    is_remote_src = '@' in src_str and ':' in src_str
+    is_remote_dst = '@' in dst_str and ':' in dst_str
+    
+    if is_remote_src or is_remote_dst:
+        # Use scp for remote transfer
         try:
-            apple_double.unlink()
-        except Exception:
-            pass
+            subprocess.run(['scp', src_str, dst_str], check=True)
+        except subprocess.CalledProcessError as e:
+            raise Exception(f"SCP failed: {e}")
+    else:
+        # Local copy
+        shutil.copy2(src, dst)
+    
+    # Handle AppleDouble cleanup only for local destinations
+    if not is_remote_dst:
+        dst_path = Path(dst)
+        apple_double = dst_path.parent / ("._" + dst_path.name)
+        if apple_double.exists():
+            try:
+                apple_double.unlink()
+            except Exception:
+                pass
     
 
 
