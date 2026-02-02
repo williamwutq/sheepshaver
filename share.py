@@ -1467,6 +1467,29 @@ Examples:
     elif command == 'show':
         print("Error: Unknown command 'show'. Did you mean 'config show'?")
         return 1
+    elif command == 'root':
+        print("Error: Unknown command 'root'. Did you mean 'config root <path>'?")
+        return 1
+    elif command == 'path':
+        print("Error: Unknown command 'path'. Did you mean 'config path <path>'?")
+        return 1
+    elif command == 'global':
+        print("Error: Unknown command 'global'. Did you mean 'config <subcommand>'?")
+        return 1
+    elif command == 'delete':
+        print("Error: Unknown command 'delete'. Did you mean 'rm' or 'remove'?")
+        return 1
+    elif command == 'commit':
+        print("Error: Unknown command 'commit'. Did you mean 'push' or 'put'?\n" \
+        "If you are using the git version control system, run 'git add' and 'git commit' instead."\
+        "'share' does not require committing changes.")
+        return 1
+    elif command == 'ls':
+        print("Error: Unknown command 'ls'. Did you mean 'list'?")
+        return 1
+    elif command == 'access':
+        print("Error: Unknown command 'access'. Did you mean 'info'?")
+        return 1
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, **opts)
 
