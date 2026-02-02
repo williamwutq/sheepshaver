@@ -1506,9 +1506,9 @@ Examples:
             return cmd_config_root(path_arg)
         elif subcommand == 'show':
             return cmd_info(suppress_extra=True, suppress_critical=True)
-        elif subsubcommand == 'override':
+        elif subcommand == 'override':
             return cmd_config_global_override(**opts)
-        elif subsubcommand == 'remove':
+        elif subcommand == 'remove':
             return cmd_config_global_remove(**opts)
         elif subcommand == 'global':
             subsubcommand = file_paths[1].lower() if len(file_paths) > 1 else ''
