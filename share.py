@@ -1363,13 +1363,21 @@ def cmd_config_global_override(**kwargs):
     """Create .shareoverride directory and copy current share info into it"""
     current = Path.cwd()
     override_dir = current / '.shareoverride'
-    override_dir.mkdir(exist_ok=True)
-    # Write current SHARE_PATH and SHARED_ROOT
-    with open(override_dir / '.sharepath', 'w') as f:
-        f.write(str(SHARE_PATH) if SHARE_PATH else '')
-    with open(override_dir / '.shareroot', 'w') as f:
-        f.write(str(SHARED_ROOT))
-    print("✓ Override config created in current directory.")
+    if override_dir.exists():
+        if not kwargs.get('suppress_extra', False):
+            print("Warning: .shareoverride directory already exists. Only missing config files will be added.")
+    else:
+        override_dir.mkdir(exist_ok=True)
+    # Write current SHARE_PATH and SHARED_ROOT if not already exist
+    sharepath_file = override_dir / '.sharepath'
+    if not sharepath_file.exists():
+        with open(sharepath_file, 'w') as f:
+            f.write(str(SHARE_PATH) if SHARE_PATH else '')
+    shareroot_file = override_dir / '.shareroot'
+    if not shareroot_file.exists():
+        with open(shareroot_file, 'w') as f:
+            f.write(str(SHARED_ROOT))
+    print("✓ Override config updated in current directory.")
     return 0
 
 
