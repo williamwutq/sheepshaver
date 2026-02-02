@@ -34,11 +34,14 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 - Supports multiple files and directories as input for most commands
 - Configurable ignore patterns similar to .gitignore
 - Informative output with configurable verbosity levels
+- Works over SSH for remote file sharing
+- Overridable configuration per directory via .shareoverride files
 
 ## Configuration
 - Set your local root by creating a file `~/.sharepath` containing the absolute path
 - Set your shared root by creating a file `~/.shareroot` containing the absolute path (defaults to `~/Shared/dump` if not set)
-- Configurable ignore patterns via `~/.shareignore` (similar to .gitignore)
+- Override global config files with a `.shareoverride` in the current directory
+- Configurable ignore patterns via `.shareignore` (similar to .gitignore)
 - Only files under SHARE_PATH are managed; attempts to share files outside this path will be rejected
 - Most commands support specifying multiple files at once (e.g., `share put file1 file2 file3`)
 
@@ -59,6 +62,9 @@ share list                   # List all files in shared directory.
 share config path <path>     # Set SHARE_PATH to specified path. This is the local root.
 share config root <path>     # Set SHARED_ROOT to specified path. This is the shared root.
 share config show            # Show current configuration.
+share config override        # Override global config files with a .shareoverride in current directory.
+share config remove          # Remove global config overrides stored in .shareoverride from current directory.
+share config global <cmd>    # Manage global configuration.
 share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
 share pushall                # Push all local files to shared if local is newer

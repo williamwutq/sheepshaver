@@ -35,10 +35,24 @@ import subprocess
 import hashlib
 import fnmatch
 
-# Load SHARE_PATH from ~/.sharepath if exists, else None
+# Find the directory to read/write config files
+def find_config_dir():
+    current = Path.cwd()
+    home = Path.home()
+    root = Path('/')
+    while current != root:
+        if (current / '.shareoverride').is_dir():
+            return current
+        if current == home:
+            break
+        current = current.parent
+    return home
+
+# Load SHARE_PATH from config file if exists, else None
 def load_path_config(config_file, default=None):
     try:
-        path = Path.home() / config_file
+        config_dir = find_config_dir()
+        path = config_dir / config_file
         if path.exists():
             with open(path, 'r') as f:
                 value = f.read().strip()
@@ -1194,7 +1208,10 @@ def cmd_info(**kwargs):
     """Show configuration info"""
     print_prefix = kwargs.get('print_prefix', '')
     print(f"{print_prefix}SHARE_PATH: {SHARE_PATH if SHARE_PATH else 'Not set'}")
-    print(f"{print_prefix}SHARED_ROOT: {SHARED_ROOT}")
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Shared directory: {SHARED_ROOT} (remote)")
+    else:
+        print(f"{print_prefix}Shared directory: {SHARED_ROOT}")
     print()
     if not kwargs.get('suppress_critical', False):
         printed_warning = False
@@ -1299,7 +1316,7 @@ def cmd_auto(**kwargs):
     return 0
 
 
-def cmd_config_path(new_sharepath):
+def cmd_config_path(new_sharepath, **kwargs):
     """Configure SHARE_PATH"""
     global SHARE_PATH
     path = Path(new_sharepath).expanduser().resolve()
@@ -1307,15 +1324,19 @@ def cmd_config_path(new_sharepath):
         print(f"Error: Specified SHARE_PATH does not exist or is not a directory: {path}")
         return 1
     SHARE_PATH = path
-    # Save to ~/.sharepath
-    config_file = Path.home() / '.sharepath'
+    # Save to config file
+    if kwargs.get('is_global', True):
+        config_dir = Path.home()
+    else:
+        config_dir = find_config_dir()
+    config_file = config_dir / '.sharepath'
     with open(config_file, 'w') as f:
         f.write(str(SHARE_PATH))
     print(f"✓ SHARE_PATH set to: {SHARE_PATH}")
     return 0
 
 
-def cmd_config_root(new_shareroot):
+def cmd_config_root(new_shareroot, **kwargs):
     """Configure SHARED_ROOT"""
     global SHARED_ROOT
     if '@' in new_shareroot and ':' in new_shareroot:
@@ -1326,12 +1347,46 @@ def cmd_config_root(new_shareroot):
             print(f"Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
             return 1
         SHARED_ROOT = path
-    # Save to ~/.shareroot
-    config_file = Path.home() / '.shareroot'
+    # Save to config file
+    if kwargs.get('is_global', True):
+        config_dir = Path.home()
+    else:
+        config_dir = find_config_dir()
+    config_file = config_dir / '.shareroot'
     with open(config_file, 'w') as f:
         f.write(str(SHARED_ROOT))
     print(f"✓ SHARED_ROOT set to: {SHARED_ROOT}")
     return 0
+
+
+def cmd_config_global_override(**kwargs):
+    """Create .shareoverride directory and copy current share info into it"""
+    current = Path.cwd()
+    override_dir = current / '.shareoverride'
+    override_dir.mkdir(exist_ok=True)
+    # Write current SHARE_PATH and SHARED_ROOT
+    with open(override_dir / '.sharepath', 'w') as f:
+        f.write(str(SHARE_PATH) if SHARE_PATH else '')
+    with open(override_dir / '.shareroot', 'w') as f:
+        f.write(str(SHARED_ROOT))
+    print("✓ Override config created in current directory.")
+    return 0
+
+
+def cmd_config_global_remove(**kwargs):
+    """Remove .shareoverride directory from the traversed directory"""
+    config_dir = find_config_dir()
+    if config_dir != Path.home():
+        override_dir = config_dir / '.shareoverride'
+        if override_dir.exists() and override_dir.is_dir():
+            shutil.rmtree(override_dir)
+            print("✓ Override config removed.")
+        else:
+            print("No override config found.")
+    else:
+        print("No override config to remove.")
+    return 0
+
 
 
 def main():
@@ -1346,27 +1401,30 @@ Customization:
         preserving their relative path under SHARE_PATH.
 
 Commands:
-  <path>               A shortcut for 'share sync <path>'. Works only for a single path.
-  info                 Show configuration information.
-  auto                 Perform automatic actions based on current directory context.
-  list                 List all files in shared directory.
-  config path <path>   Set SHARE_PATH to specified path. This is the local root.
-  config root <path>   Set SHARED_ROOT to specified path. This is the shared root.
-  config show          Show current configuration.
-  put <path> [...]     Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
-  push <path> [...]    Copy to shared only if local is newer. If input is a directory, push all files under it.
-  pushall              Push all local files to shared if local is newer.
-  get <path> [...]     Copy from shared to local (always overwrite). If input is a directory, get all files under it.
-  pull <path> [...]    Copy from shared only if shared is newer. If input is a directory, pull all files under it.
-  pullall              Pull all shared files to local if shared is newer.
-  sync <path> [...]    Sync by copying whichever is newer. If input is a directory, sync all files under it.
-  syncall              Sync all files by copying whichever is newer.
-  check <path> [...]   Check sync status of file(s). If input is a directory, check all files under it.
-  rm <path> [...]      Remove file(s) from shared location. If input is a directory, remove all files under it.
-  audit <path> [...]   Audit local directory to verify synced files. If input is a directory, audit all files under it.
-  auditall             Audit entire shared directory to verify synced files.
-  status [dir ...]     Show status of entire shared directory or local directory if specified.
-  preview <cmd> [...]  Preview the specified command without making changes.
+  <path>                     A shortcut for 'share sync <path>'. Works only for a single path.
+  info                       Show configuration information.
+  auto                       Perform automatic actions based on current directory context.
+  list                       List all files in shared directory.
+  config path <path>         Set SHARE_PATH to specified path. This is the local root.
+  config root <path>         Set SHARED_ROOT to specified path. This is the shared root.
+  config show                Show current configuration.
+  config override            Override global config files with a .shareoverride in current directory.
+  config remove              Remove global config overrides stored in .shareoverride from current directory.
+  share config global <cmd>  Manage global configuration.
+  put <path> [...]           Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
+  push <path> [...]          Copy to shared only if local is newer. If input is a directory, push all files under it.
+  pushall                    Push all local files to shared if local is newer.
+  get <path> [...]           Copy from shared to local (always overwrite). If input is a directory, get all files under it.
+  pull <path> [...]          Copy from shared only if shared is newer. If input is a directory, pull all files under it.
+  pullall                    Pull all shared files to local if shared is newer.
+  sync <path> [...]          Sync by copying whichever is newer. If input is a directory, sync all files under it.
+  syncall                    Sync all files by copying whichever is newer.
+  check <path> [...]         Check sync status of file(s). If input is a directory, check all files under it.
+  rm <path> [...]            Remove file(s) from shared location. If input is a directory, remove all files under it.
+  audit <path> [...]         Audit local directory to verify synced files. If input is a directory, audit all files under it.
+  auditall                   Audit entire shared directory to verify synced files.
+  status [dir ...]           Show status of entire shared directory or local directory if specified.
+  preview <cmd> [...]        Preview the specified command without making changes.
 
 Examples:
   share put rust/cargo.toml
@@ -1434,19 +1492,43 @@ Examples:
             print("Error: 'config' requires a sub-command")
             return 1
         subcommand = file_paths[0].lower()
-        path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
         if subcommand == 'path':
+            path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
             if not path_arg:
                 print("Error: 'config path' requires a path argument")
                 return 1
             return cmd_config_path(path_arg)
         elif subcommand == 'root':
+            path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
             if not path_arg:
                 print("Error: 'config root' requires a path argument")
                 return 1
             return cmd_config_root(path_arg)
         elif subcommand == 'show':
             return cmd_info(suppress_extra=True, suppress_critical=True)
+        elif subsubcommand == 'override':
+            return cmd_config_global_override(**opts)
+        elif subsubcommand == 'remove':
+            return cmd_config_global_remove(**opts)
+        elif subcommand == 'global':
+            subsubcommand = file_paths[1].lower() if len(file_paths) > 1 else ''
+            path_arg = ' '.join(file_paths[2:])  # In case path contains
+            if subsubcommand == 'path':
+                if not path_arg:
+                    print("Error: 'config global path' requires a path argument")
+                    return 1
+                return cmd_config_path(path_arg, is_global=True)
+            elif subsubcommand == 'root':
+                if not path_arg:
+                    print("Error: 'config global root' requires a path argument")
+                    return 1
+                return cmd_config_root(path_arg, is_global=True)
+            elif subsubcommand == 'show':
+                return cmd_info(suppress_extra=True, suppress_critical=True, is_global=True)
+            elif subsubcommand == 'override':
+                return cmd_config_global_override(**opts)
+            elif subsubcommand == 'remove':
+                return cmd_config_global_remove(**opts)
         else:
             print(f"Error: Unknown config sub-command '{subcommand}'")
             return 1
@@ -1474,7 +1556,7 @@ Examples:
         print("Error: Unknown command 'path'. Did you mean 'config path <path>'?")
         return 1
     elif command == 'global':
-        print("Error: Unknown command 'global'. Did you mean 'config <subcommand>'?")
+        print("Error: Unknown command 'global'. Did you mean 'config global <subcommand>'?")
         return 1
     elif command == 'delete':
         print("Error: Unknown command 'delete'. Did you mean 'rm' or 'remove'?")
@@ -1489,6 +1571,9 @@ Examples:
         return 1
     elif command == 'access':
         print("Error: Unknown command 'access'. Did you mean 'info'?")
+        return 1
+    elif command == 'override':
+        print("Error: Unknown command 'override'. Did you mean 'config override'?")
         return 1
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, **opts)
