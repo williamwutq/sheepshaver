@@ -1319,9 +1319,11 @@ def cmd_auto(**kwargs):
 def cmd_config_path(new_sharepath, **kwargs):
     """Configure SHARE_PATH"""
     global SHARE_PATH
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
     path = Path(new_sharepath).expanduser().resolve()
     if not path.exists() or not path.is_dir():
-        print(f"Error: Specified SHARE_PATH does not exist or is not a directory: {path}")
+        print(f"{print_prefix}Error: Specified SHARE_PATH does not exist or is not a directory: {path}")
         return 1
     SHARE_PATH = path
     # Save to config file
@@ -1330,21 +1332,24 @@ def cmd_config_path(new_sharepath, **kwargs):
     else:
         config_dir = find_config_dir()
     config_file = config_dir / '.sharepath'
-    with open(config_file, 'w') as f:
-        f.write(str(SHARE_PATH))
-    print(f"✓ SHARE_PATH set to: {SHARE_PATH}")
+    if not preview:
+        with open(config_file, 'w') as f:
+            f.write(str(SHARE_PATH))
+    print(f"{print_prefix}✓ SHARE_PATH set to: {SHARE_PATH}")
     return 0
 
 
 def cmd_config_root(new_shareroot, **kwargs):
     """Configure SHARED_ROOT"""
     global SHARED_ROOT
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
     if '@' in new_shareroot and ':' in new_shareroot:
         SHARED_ROOT = new_shareroot
     else:
         path = Path(new_shareroot).expanduser().resolve()
         if not path.exists() or not path.is_dir():
-            print(f"Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
+            print(f"{print_prefix}Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
             return 1
         SHARED_ROOT = path
     # Save to config file
@@ -1353,46 +1358,58 @@ def cmd_config_root(new_shareroot, **kwargs):
     else:
         config_dir = find_config_dir()
     config_file = config_dir / '.shareroot'
-    with open(config_file, 'w') as f:
-        f.write(str(SHARED_ROOT))
-    print(f"✓ SHARED_ROOT set to: {SHARED_ROOT}")
+    if not preview:
+        with open(config_file, 'w') as f:
+            f.write(str(SHARED_ROOT))
+    print(f"{print_prefix}✓ SHARED_ROOT set to: {SHARED_ROOT}")
     return 0
 
 
 def cmd_config_global_override(**kwargs):
     """Create .shareoverride directory and copy current share info into it"""
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
+    
     current = Path.cwd()
     override_dir = current / '.shareoverride'
     if override_dir.exists():
         if not kwargs.get('suppress_extra', False):
-            print("Warning: .shareoverride directory already exists. Only missing config files will be added.")
+            print(f"{print_prefix}Warning: .shareoverride directory already exists. Only missing config files will be added.")
     else:
-        override_dir.mkdir(exist_ok=True)
+        if not preview:
+            override_dir.mkdir(exist_ok=True)
     # Write current SHARE_PATH and SHARED_ROOT if not already exist
     sharepath_file = override_dir / '.sharepath'
     if not sharepath_file.exists():
-        with open(sharepath_file, 'w') as f:
-            f.write(str(SHARE_PATH) if SHARE_PATH else '')
+        if not preview:
+            with open(sharepath_file, 'w') as f:
+                f.write(str(SHARE_PATH) if SHARE_PATH else '')
     shareroot_file = override_dir / '.shareroot'
     if not shareroot_file.exists():
-        with open(shareroot_file, 'w') as f:
-            f.write(str(SHARED_ROOT))
-    print("✓ Override config updated in current directory.")
+        if not preview:
+            with open(shareroot_file, 'w') as f:
+                f.write(str(SHARED_ROOT))
+    if not preview:
+        print(f"{print_prefix}✓ Override config updated in current directory.")
     return 0
 
 
 def cmd_config_global_remove(**kwargs):
     """Remove .shareoverride directory from the traversed directory"""
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
+    
     config_dir = find_config_dir()
     if config_dir != Path.home():
         override_dir = config_dir / '.shareoverride'
         if override_dir.exists() and override_dir.is_dir():
-            shutil.rmtree(override_dir)
-            print("✓ Override config removed.")
+            if not preview:
+                shutil.rmtree(override_dir)
+                print(f"{print_prefix}✓ Override config removed.")
         else:
-            print("No override config found.")
+            print(f"{print_prefix}No override config found.")
     else:
-        print("No override config to remove.")
+        print(f"{print_prefix}No override config to remove.")
     return 0
 
 
@@ -1529,6 +1546,12 @@ Examples:
             return cmd_config_global_override(**opts)
         elif subcommand == 'remove':
             return cmd_config_global_remove(**opts)
+        elif subcommand == 'rm':
+            print("Error: 'config rm' is not a valid sub-command. Did you mean 'config remove'?")
+            return 1
+        elif subcommand == 'delete':
+            print("Error: 'config delete' is not a valid sub-command. Did you mean 'config remove'?")
+            return 1
         elif subcommand == 'global':
             subsubcommand = file_paths[1].lower() if len(file_paths) > 1 else ''
             path_arg = ' '.join(file_paths[2:])  # In case path contains
@@ -1548,6 +1571,15 @@ Examples:
                 return cmd_config_global_override(**opts)
             elif subsubcommand == 'remove':
                 return cmd_config_global_remove(**opts)
+            elif subsubcommand == 'rm':
+                print("Error: 'config global rm' is not a valid sub-command. Did you mean 'config global remove'?")
+                return 1
+            elif subsubcommand == 'delete':
+                print("Error: 'config global delete' is not a valid sub-command. Did you mean 'config global remove'?")
+                return 1
+            else:
+                print(f"Error: Unknown config global sub-command '{subsubcommand}'")
+                return 1
         elif subcommand == 'local':
             print("Error: 'config local' is not a valid sub-command. Did you mean 'config path <path>'?\n" \
                     "The current version of share does all operations locally.")
@@ -1580,6 +1612,9 @@ Examples:
         return 1
     elif command == 'global':
         print("Error: Unknown command 'global'. Did you mean 'config global <subcommand>'?")
+        return 1
+    elif command == 'remote':
+        print("Error: Unknown command 'remote'. Did you mean 'config root <path>'?")
         return 1
     elif command == 'delete':
         print("Error: Unknown command 'delete'. Did you mean 'rm' or 'remove'?")
