@@ -81,6 +81,7 @@ share status [dir ...]       # Show status of local directory (or directories). 
 share preview <cmd> [...]    # Preview the specified command without making changes.
 share author                 # Show author information.
 share version                # Show version information.
+share source                 # Show source code repository.
 ```
 
 ## Example
