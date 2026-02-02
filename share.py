@@ -42,7 +42,7 @@ def find_config_dir():
     root = Path('/')
     while current != root:
         if (current / '.shareoverride').is_dir():
-            return current
+            return current / '.shareoverride'
         if current == home:
             break
         current = current.parent
@@ -1425,6 +1425,9 @@ Commands:
   auditall                   Audit entire shared directory to verify synced files.
   status [dir ...]           Show status of entire shared directory or local directory if specified.
   preview <cmd> [...]        Preview the specified command without making changes.
+  author                     Show author information.
+  version                    Show version information.
+  source                     Show source code repository.
 
 Examples:
   share put rust/cargo.toml
@@ -1438,7 +1441,7 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
-    parser.add_argument('-v', '--version', action='version', version='share utility version 1.4')
+    parser.add_argument('-v', '--version', action='version', version='share utility version 1.5')
     # Flags, --suppress-extra, --suppress-error, --suppress-critical:
     parser.add_argument('-next', '-sext', '--suppress-extra', '--no-extra', action='store_true', help='Suppress extra informational messages')
     parser.add_argument('-nerr', '-serr', '--suppress-error', '--no-error', action='store_true', help='Suppress error messages')
@@ -1487,6 +1490,14 @@ Examples:
     # Commands that don't require a file argument
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
+    elif command == 'version':
+        print("share utility version 1.5")
+        return 0
+    elif command == 'author':
+        print("Created by William Wu")
+        return 0
+    elif command == 'source':
+        print("Source code repository: https://github.com/williamwutq/sheepshaver")
     elif command == 'config':
         if len(file_paths) < 1:
             print("Error: 'config' requires a sub-command")
@@ -1529,6 +1540,10 @@ Examples:
                 return cmd_config_global_override(**opts)
             elif subsubcommand == 'remove':
                 return cmd_config_global_remove(**opts)
+        elif subcommand == 'local':
+            print("Error: 'config local' is not a valid sub-command. Did you mean 'config path <path>'?\n" \
+                    "The current version of share does all operations locally.")
+            return 1
         else:
             print(f"Error: Unknown config sub-command '{subcommand}'")
             return 1
@@ -1574,6 +1589,33 @@ Examples:
         return 1
     elif command == 'override':
         print("Error: Unknown command 'override'. Did you mean 'config override'?")
+        return 1
+    elif command == 'alter':
+        print("Error: Unknown command 'alter'. Did you mean 'config root <path>' or 'config path <path>'?")
+        return 1
+    elif command == 'configure':
+        print("Error: Unknown command 'configure'. Did you mean 'config <subcommand>'?")
+        return 1
+    elif command == 'change':
+        print("Error: Unknown command 'change'. Did you mean 'config root <path>' or 'config path <path>'?")
+        return 1
+    elif command == 'issue':
+        print("Error: Unknown command 'issue'. Did you mean 'audit' or 'auditall'?")
+        return 1
+    elif command == 'verify':
+        print("Error: Unknown command 'verify'. Did you mean 'audit' or 'auditall'?")
+        return 1
+    elif command == 'local':
+        print("Error: Unknown command 'local'. The current version of share does all operations locally.\n" \
+              "If you meant to edit the local configuration, use 'config path <path>'.")
+        return 1
+    elif command == 'shared':
+        print("Error: Unknown command 'shared'. Did you mean 'list' or 'info'?")
+        return 1
+    elif command == 'update':
+        print("Error: Unknown command 'update'. Did you mean 'pull' or 'pullall'?\n" \
+              "'share' is not automatically updatable; see Github source for updates.\n" \
+              "To obtain the github source, run 'source'.")
         return 1
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, **opts)

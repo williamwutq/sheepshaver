@@ -79,6 +79,8 @@ share audit <path> [...]     # Audit local file(s) to check on files marked as s
 share auditall               # Audit entire shared directory to verify synced files.
 share status [dir ...]       # Show status of local directory (or directories). If no dir specified, show status of all tracked files.
 share preview <cmd> [...]    # Preview the specified command without making changes.
+share author                 # Show author information.
+share version                # Show version information.
 ```
 
 ## Example
