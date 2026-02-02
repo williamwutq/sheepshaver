@@ -1377,6 +1377,9 @@ Examples:
         return cmd_info(**opts)
     elif command == 'auto':
         return cmd_auto(**opts)
+    elif command == 'show':
+        print("Error: Unknown command 'show'. Did you mean 'config show'?")
+        return 1
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, **opts)
 
