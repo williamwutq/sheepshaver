@@ -1516,28 +1516,28 @@ Examples:
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
     elif command == 'version':
-        print("share utility version 1.5")
+        print(f"{print_prefix}share utility version 1.5")
         return 0
     elif command == 'author':
-        print("Created by William Wu")
+        print(f"{print_prefix}Created by William Wu")
         return 0
     elif command == 'source':
-        print("Source code repository: https://github.com/williamwutq/sheepshaver")
+        print(f"{print_prefix}Source code repository: https://github.com/williamwutq/sheepshaver")
     elif command == 'config':
         if len(file_paths) < 1:
-            print("Error: 'config' requires a sub-command")
+            print(f"{print_prefix}Error: 'config' requires a sub-command")
             return 1
         subcommand = file_paths[0].lower()
         if subcommand == 'path':
             path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
             if not path_arg:
-                print("Error: 'config path' requires a path argument")
+                print(f"{print_prefix}Error: 'config path' requires a path argument")
                 return 1
             return cmd_config_path(path_arg)
         elif subcommand == 'root':
             path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
             if not path_arg:
-                print("Error: 'config root' requires a path argument")
+                print(f"{print_prefix}Error: 'config root' requires a path argument")
                 return 1
             return cmd_config_root(path_arg)
         elif subcommand == 'show':
@@ -1547,22 +1547,22 @@ Examples:
         elif subcommand == 'remove':
             return cmd_config_global_remove(**opts)
         elif subcommand == 'rm':
-            print("Error: 'config rm' is not a valid sub-command. Did you mean 'config remove'?")
+            print(f"{print_prefix}Error: 'config rm' is not a valid sub-command. Did you mean 'config remove'?")
             return 1
         elif subcommand == 'delete':
-            print("Error: 'config delete' is not a valid sub-command. Did you mean 'config remove'?")
+            print(f"{print_prefix}Error: 'config delete' is not a valid sub-command. Did you mean 'config remove'?")
             return 1
         elif subcommand == 'global':
             subsubcommand = file_paths[1].lower() if len(file_paths) > 1 else ''
             path_arg = ' '.join(file_paths[2:])  # In case path contains
             if subsubcommand == 'path':
                 if not path_arg:
-                    print("Error: 'config global path' requires a path argument")
+                    print(f"{print_prefix}Error: 'config global path' requires a path argument")
                     return 1
                 return cmd_config_path(path_arg, is_global=True)
             elif subsubcommand == 'root':
                 if not path_arg:
-                    print("Error: 'config global root' requires a path argument")
+                    print(f"{print_prefix}Error: 'config global root' requires a path argument")
                     return 1
                 return cmd_config_root(path_arg, is_global=True)
             elif subsubcommand == 'show':
@@ -1572,20 +1572,20 @@ Examples:
             elif subsubcommand == 'remove':
                 return cmd_config_global_remove(**opts)
             elif subsubcommand == 'rm':
-                print("Error: 'config global rm' is not a valid sub-command. Did you mean 'config global remove'?")
+                print(f"{print_prefix}Error: 'config global rm' is not a valid sub-command. Did you mean 'config global remove'?")
                 return 1
             elif subsubcommand == 'delete':
-                print("Error: 'config global delete' is not a valid sub-command. Did you mean 'config global remove'?")
+                print(f"{print_prefix}Error: 'config global delete' is not a valid sub-command. Did you mean 'config global remove'?")
                 return 1
             else:
-                print(f"Error: Unknown config global sub-command '{subsubcommand}'")
+                print(f"{print_prefix}Error: Unknown config global sub-command '{subsubcommand}'")
                 return 1
         elif subcommand == 'local':
-            print("Error: 'config local' is not a valid sub-command. Did you mean 'config path <path>'?\n" \
-                    "The current version of share does all operations locally.")
+            print(f"{print_prefix}Error: 'config local' is not a valid sub-command. Did you mean 'config path <path>'?\n" \
+                    f"{print_prefix}The current version of share does all operations locally.")
             return 1
         else:
-            print(f"Error: Unknown config sub-command '{subcommand}'")
+            print(f"{print_prefix}Error: Unknown config sub-command '{subcommand}'")
             return 1
     elif command == 'pushall':
         return cmd_push_all(**opts)
@@ -1602,62 +1602,62 @@ Examples:
     elif command == 'auto':
         return cmd_auto(**opts)
     elif command == 'show':
-        print("Error: Unknown command 'show'. Did you mean 'config show'?")
+        print(f"{print_prefix}Error: Unknown command 'show'. Did you mean 'config show'?")
         return 1
     elif command == 'root':
-        print("Error: Unknown command 'root'. Did you mean 'config root <path>'?")
+        print(f"{print_prefix}Error: Unknown command 'root'. Did you mean 'config root <path>'?")
         return 1
     elif command == 'path':
-        print("Error: Unknown command 'path'. Did you mean 'config path <path>'?")
+        print(f"{print_prefix}Error: Unknown command 'path'. Did you mean 'config path <path>'?")
         return 1
     elif command == 'global':
-        print("Error: Unknown command 'global'. Did you mean 'config global <subcommand>'?")
+        print(f"{print_prefix}Error: Unknown command 'global'. Did you mean 'config global <subcommand>'?")
         return 1
     elif command == 'remote':
-        print("Error: Unknown command 'remote'. Did you mean 'config root <path>'?")
+        print(f"{print_prefix}Error: Unknown command 'remote'. Did you mean 'config root <path>'?")
         return 1
     elif command == 'delete':
-        print("Error: Unknown command 'delete'. Did you mean 'rm' or 'remove'?")
+        print(f"{print_prefix}Error: Unknown command 'delete'. Did you mean 'rm' or 'remove'?")
         return 1
     elif command == 'commit':
-        print("Error: Unknown command 'commit'. Did you mean 'push' or 'put'?\n" \
-        "If you are using the git version control system, run 'git add' and 'git commit' instead."\
+        print(f"{print_prefix}Error: Unknown command 'commit'. Did you mean 'push' or 'put'?\n" \
+        f"{print_prefix}If you are using the git version control system, run 'git add' and 'git commit' instead. "\
         "'share' does not require committing changes.")
         return 1
     elif command == 'ls':
-        print("Error: Unknown command 'ls'. Did you mean 'list'?")
+        print(f"{print_prefix}Error: Unknown command 'ls'. Did you mean 'list'?")
         return 1
     elif command == 'access':
-        print("Error: Unknown command 'access'. Did you mean 'info'?")
+        print(f"{print_prefix}Error: Unknown command 'access'. Did you mean 'info'?")
         return 1
     elif command == 'override':
-        print("Error: Unknown command 'override'. Did you mean 'config override'?")
+        print(f"{print_prefix}Error: Unknown command 'override'. Did you mean 'config override'?")
         return 1
     elif command == 'alter':
-        print("Error: Unknown command 'alter'. Did you mean 'config root <path>' or 'config path <path>'?")
+        print(f"{print_prefix}Error: Unknown command 'alter'. Did you mean 'config root <path>' or 'config path <path>'?")
         return 1
     elif command == 'configure':
-        print("Error: Unknown command 'configure'. Did you mean 'config <subcommand>'?")
+        print(f"{print_prefix}Error: Unknown command 'configure'. Did you mean 'config <subcommand>'?")
         return 1
     elif command == 'change':
-        print("Error: Unknown command 'change'. Did you mean 'config root <path>' or 'config path <path>'?")
+        print(f"{print_prefix}Error: Unknown command 'change'. Did you mean 'config root <path>' or 'config path <path>'?")
         return 1
     elif command == 'issue':
-        print("Error: Unknown command 'issue'. Did you mean 'audit' or 'auditall'?")
+        print(f"{print_prefix}Error: Unknown command 'issue'. Did you mean 'audit' or 'auditall'?")
         return 1
     elif command == 'verify':
-        print("Error: Unknown command 'verify'. Did you mean 'audit' or 'auditall'?")
+        print(f"{print_prefix}Error: Unknown command 'verify'. Did you mean 'audit' or 'auditall'?")
         return 1
     elif command == 'local':
-        print("Error: Unknown command 'local'. The current version of share does all operations locally.\n" \
+        print(f"{print_prefix}Error: Unknown command 'local'. The current version of share does all operations locally.\n" \
               "If you meant to edit the local configuration, use 'config path <path>'.")
         return 1
     elif command == 'shared':
-        print("Error: Unknown command 'shared'. Did you mean 'list' or 'info'?")
+        print(f"{print_prefix}Error: Unknown command 'shared'. Did you mean 'list' or 'info'?")
         return 1
     elif command == 'update':
-        print("Error: Unknown command 'update'. Did you mean 'pull' or 'pullall'?\n" \
-              "'share' is not automatically updatable; see Github source for updates.\n" \
+        print(f"{print_prefix}Error: Unknown command 'update'. Did you mean 'pull' or 'pullall'?\n" \
+              f"{print_prefix}'share' is not automatically updatable; see Github source for updates. " \
               "To obtain the github source, run 'source'.")
         return 1
     elif command == 'status' and len(file_paths) > 0:
@@ -1679,12 +1679,12 @@ Examples:
     if command not in commands:
         if path_exists_and_valid(command) and command not in ['.', '..']:
             return cmd_sync(command, **opts)
-        print(f"Error: Unknown command '{command}'")
-        print("Use 'share --help' for usage information")
+        print(f"{print_prefix}Error: Unknown command '{command}'")
+        print(f"{print_prefix}Use 'share --help' for usage information")
         return 1
     
     if not file_paths:
-        print(f"Error: '{command}' require at least one file path argument")
+        print(f"{print_prefix}Error: '{command}' require at least one file path argument")
         return 1
 
     if len(file_paths) > 1:
@@ -1693,7 +1693,7 @@ Examples:
         for f in file_paths:
             res += commands[command](f, **opts)
         if res != 0:
-            print(f"⚠ '{command}' completed with {res} errors")
+            print(f"{print_prefix}⚠ '{command}' completed with {res} errors")
             return 1
         return 0
     else:
