@@ -43,7 +43,10 @@ def load_path_config(config_file, default=None):
             with open(path, 'r') as f:
                 value = f.read().strip()
                 if value:
-                    return Path(value).expanduser().resolve()
+                    if '@' in value and ':' in value:
+                        return value  # remote path as string
+                    else:
+                        return Path(value).expanduser().resolve()
     except Exception:
         pass
     return default
@@ -65,7 +68,10 @@ def get_shared_path(local_path):
             return None
     else:
         rel = abs_path.name  # fallback: just filename
-    return SHARED_ROOT / rel
+    if isinstance(SHARED_ROOT, str):
+        return f"{SHARED_ROOT}/{str(rel)}"
+    else:
+        return SHARED_ROOT / rel
 
 
 def format_time(timestamp):
@@ -123,6 +129,19 @@ def file_copy(src, dst, **kwargs):
     
     if is_remote_src or is_remote_dst:
         # Use scp for remote transfer
+        # First, ensure destination directory exists for remote dst
+        if is_remote_dst:
+            # Parse dst: user@host:path
+            import re
+            match = re.match(r'([^@]+)@([^:]+):(.*)', dst_str)
+            if match:
+                user, host, path = match.groups()
+                parent_path = os.path.dirname(path)
+                if parent_path and parent_path != '/':
+                    try:
+                        subprocess.run(['ssh', f'{user}@{host}', 'mkdir', '-p', parent_path], check=True)
+                    except subprocess.CalledProcessError:
+                        pass  # ignore if mkdir fails
         try:
             subprocess.run(['scp', src_str, dst_str], check=True)
         except subprocess.CalledProcessError as e:
@@ -237,7 +256,8 @@ def cmd_put(local_file, **kwargs):
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
-    shared_path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(shared_path, Path):
+        shared_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         file_copy(local_path, shared_path, **kwargs)
@@ -266,16 +286,16 @@ def cmd_push(local_file, **kwargs):
         return 1
 
     # If shared doesn't exist, always push
-    if not shared_path.exists():
+    if isinstance(shared_path, Path) and not shared_path.exists():
         shared_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            file_copy(local_path, shared_path, **kwargs)
-        except Exception as e:
-            if not kwargs.get('suppress_error', False):
-                print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
-            return 1
-        print(f"{print_prefix}✓ Pushed: {local_file} → {shared_path} (new)")
-        return 0
+    try:
+        file_copy(local_path, shared_path, **kwargs)
+    except Exception as e:
+        if not kwargs.get('suppress_error', False):
+            print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
+        return 1
+    print(f"{print_prefix}✓ Pushed: {local_file} → {shared_path} (new)")
+    return 0
 
     # Compare modification times
     local_mtime = local_path.stat().st_mtime
@@ -301,6 +321,10 @@ def cmd_push_all(**kwargs):
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot push all.")
+        return 1
+    
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Push all not supported for remote shared root")
         return 1
     
     count = 0
@@ -432,6 +456,10 @@ def cmd_pull_all(**kwargs):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot pull all.")
         return 1
     
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Pull all not supported for remote shared root")
+        return 1
+    
     count = 0
 
     for shared_file in SHARED_ROOT.rglob('*'):
@@ -490,7 +518,10 @@ def cmd_sync(local_file, **kwargs):
         return 1
 
     local_exists = file_exists_and_valid(local_path)
-    shared_exists = shared_path.exists()
+    if isinstance(shared_path, str):
+        shared_exists = True  # assume exists for remote
+    else:
+        shared_exists = shared_path.exists()
 
     # If is path, recurse
     if local_path.is_dir():
@@ -504,7 +535,8 @@ def cmd_sync(local_file, **kwargs):
 
     # If only one exists, copy to the other
     if not shared_exists:
-        shared_path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(shared_path, Path):
+            shared_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             file_copy(local_path, shared_path, **kwargs)
         except Exception as e:
@@ -561,6 +593,10 @@ def cmd_sync_all(**kwargs):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot sync all.")
         return 1
     
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Sync all not supported for remote shared root")
+        return 1
+    
     count = 0
 
     # Walk through shared directory
@@ -594,7 +630,8 @@ def cmd_sync_all(**kwargs):
             continue
 
         if not shared_exists:
-            shared_path.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(shared_path, Path):
+                shared_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 file_copy(local_path, shared_path, **kwargs)
             except Exception as e:
@@ -647,15 +684,26 @@ def cmd_check(local_file, **kwargs):
         return 1
 
     local_exists = file_exists_and_valid(local_path)
-    shared_exists = shared_path.exists()
+    if isinstance(shared_path, str):
+        shared_exists = None  # unknown
+    else:
+        shared_exists = shared_path.exists()
 
     print_prefix = kwargs.get('print_prefix', '')
     print(f"{print_prefix}File: {local_file}")
     print(f"{print_prefix}Shared path: {shared_path}")
     print()
 
-    if not local_exists and not shared_exists:
+    if not local_exists and (shared_exists is False or shared_exists is None):
         print(f"{print_prefix}Status: ✗ Does not exist in either location")
+        return 0
+
+    if shared_exists is None:
+        print(f"{print_prefix}Status: ? Shared is remote, cannot check existence")
+        if not kwargs.get('suppress_extra', False):
+            if local_exists:
+                local_time = format_time(local_path.stat().st_mtime)
+                print(f"{print_prefix}Local: Modified {local_time}")
         return 0
 
     if not shared_exists:
@@ -710,22 +758,40 @@ def cmd_remove(local_file, **kwargs):
     if shared_path is None:
         return 1
 
-    if not shared_path.exists():
-        if not kwargs.get('suppress_error', False):
-            print(f"{print_prefix}File not in shared: {local_file}")
-        return 0
+    if isinstance(shared_path, str):
+        # remote remove
+        # use ssh rm
+        import re
+        match = re.match(r'([^@]+)@([^:]+):(.*)', shared_path)
+        if not match:
+            print(f"{print_prefix}Invalid remote path: {shared_path}")
+            return 1
+        user, host, path = match.groups()
+        try:
+            subprocess.run(['ssh', f'{user}@{host}', 'rm', '-f', path], check=True)
+        except subprocess.CalledProcessError as e:
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}Error: Failed to remove remote file: {e}")
+            return 1
+        print(f"{print_prefix}✓ Removed from shared: {shared_path}")
+        # Clean up empty parent directories - not supported for remote
+    else:
+        if not shared_path.exists():
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}File not in shared: {local_file}")
+            return 0
 
-    shared_path.unlink()
-    print(f"{print_prefix}✓ Removed from shared: {shared_path}")
+        shared_path.unlink()
+        print(f"{print_prefix}✓ Removed from shared: {shared_path}")
 
-    # Clean up empty parent directories
-    try:
-        parent = shared_path.parent
-        while parent != SHARED_ROOT and not any(parent.iterdir()):
-            parent.rmdir()
-            parent = parent.parent
-    except:
-        pass
+        # Clean up empty parent directories
+        try:
+            parent = shared_path.parent
+            while parent != SHARED_ROOT and not any(parent.iterdir()):
+                parent.rmdir()
+                parent = parent.parent
+        except:
+            pass
 
     return 0
 
@@ -733,6 +799,11 @@ def cmd_remove(local_file, **kwargs):
 def cmd_status(**kwargs):
     """Show status of entire shared directory"""
     print_prefix = kwargs.get('print_prefix', '')
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Shared directory: {SHARED_ROOT} (remote)")
+        print(f"{print_prefix}Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
+        print(f"{print_prefix}Cannot check status of remote shared directory")
+        return 0
     if not SHARED_ROOT.exists():
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
@@ -822,7 +893,7 @@ def cmd_status(**kwargs):
 def cmd_status_local(dirs, **kwargs):
     """Show status of local directory"""
     print_prefix = kwargs.get('print_prefix', '')
-    if not SHARED_ROOT.exists():
+    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
             SHARED_ROOT.mkdir(parents=True, exist_ok=True)
@@ -920,6 +991,10 @@ def cmd_audit_all(**kwargs):
             print("Error: SHARE_PATH is not set. Cannot audit.")
         return 1
     
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Audit all not supported for remote shared root")
+        return 1
+    
     synced = []
 
     # Walk through shared directory
@@ -956,6 +1031,9 @@ def cmd_audit_all(**kwargs):
         # Audit content by comparing hashes
         shared_path = get_shared_path(f)
         if shared_path is None:
+            continue
+        if isinstance(shared_path, str):
+            print(f"Cannot audit remote file: {f}")
             continue
         local_hash = hashlib.sha256()
         shared_hash = hashlib.sha256()
@@ -1000,7 +1078,7 @@ def cmd_audit_all(**kwargs):
 def cmd_audit(dirs, **kwargs):
     """Audit local directories to check on files marked as synced"""
     print_prefix = kwargs.get('print_prefix', '')
-    if not SHARED_ROOT.exists():
+    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
         if not kwargs.get('suppress_critical', False):
             print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
         return 0
@@ -1048,6 +1126,9 @@ def cmd_audit(dirs, **kwargs):
         shared_path = get_shared_path(f)
         if shared_path is None:
             continue
+        if isinstance(shared_path, str):
+            print(f"Cannot audit remote file: {f}")
+            continue
         local_hash = hashlib.sha256()
         shared_hash = hashlib.sha256()
         with open(f, 'rb') as lf, open(shared_path, 'rb') as sf:
@@ -1091,6 +1172,9 @@ def cmd_audit(dirs, **kwargs):
 def cmd_list(**kwargs):
     """List all files in shared directory"""
     print_prefix = kwargs.get('print_prefix', '')
+    if isinstance(SHARED_ROOT, str):
+        print(f"{print_prefix}Cannot list remote shared directory")
+        return 1
     if not SHARED_ROOT.exists():
         return 1
 
@@ -1120,7 +1204,7 @@ def cmd_info(**kwargs):
         elif not SHARE_PATH.exists():
             print(f"{print_prefix}Warning: SHARE_PATH does not exist.")
             printed_warning = True
-        if not SHARED_ROOT.exists():
+        if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
             print(f"{print_prefix}Warning: SHARED_ROOT does not exist.")
             printed_warning = True
         if printed_warning:
@@ -1143,7 +1227,7 @@ def cmd_auto(**kwargs):
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot perform automatic actions.")
         return 1
-    if not SHARED_ROOT.exists():
+    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARED_ROOT does not exist. Cannot perform automatic actions.")
         return 1
@@ -1234,11 +1318,14 @@ def cmd_config_path(new_sharepath):
 def cmd_config_root(new_shareroot):
     """Configure SHARED_ROOT"""
     global SHARED_ROOT
-    path = Path(new_shareroot).expanduser().resolve()
-    if not path.exists() or not path.is_dir():
-        print(f"Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
-        return 1
-    SHARED_ROOT = path
+    if '@' in new_shareroot and ':' in new_shareroot:
+        SHARED_ROOT = new_shareroot
+    else:
+        path = Path(new_shareroot).expanduser().resolve()
+        if not path.exists() or not path.is_dir():
+            print(f"Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
+            return 1
+        SHARED_ROOT = path
     # Save to ~/.shareroot
     config_file = Path.home() / '.shareroot'
     with open(config_file, 'w') as f:
