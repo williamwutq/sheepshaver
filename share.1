@@ -169,6 +169,15 @@ After finishing, unmount the drive safely:
 .fi
 Reset shared root to default if needed.
 
+.SS Share over SSH
+You can set the SHARED_ROOT to a remote path via SSH:
+.nf
+	share config root user@remote_host:/path/to/shared_directory
+.fi
+Ensure you have passwordless SSH access to the remote host. You can then use \fBshare put\fR, \fBshare push\fR, \fBshare sync\fR, etc. to manage files between your local directory and the remote shared directory.
+
+The bulk operations are currently not supported YET over SSH.
+
 .SH NOTES
 - Only files under SHARE_PATH are managed. Attempts to share files outside this path will be rejected.
 - The mapping preserves the relative path under SHARE_PATH in SHARED_ROOT.
