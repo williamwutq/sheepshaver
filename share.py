@@ -1523,6 +1523,7 @@ Examples:
         return 0
     elif command == 'source':
         print(f"{print_prefix}Source code repository: https://github.com/williamwutq/sheepshaver")
+        return 0
     elif command == 'config':
         if len(file_paths) < 1:
             print(f"{print_prefix}Error: 'config' requires a sub-command")
