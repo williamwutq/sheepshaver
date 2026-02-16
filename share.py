@@ -1435,7 +1435,7 @@ Commands:
   config show                Show current configuration.
   config override            Override global config files with a .shareoverride in current directory.
   config remove              Remove global config overrides stored in .shareoverride from current directory.
-  share config global <cmd>  Manage global configuration.
+  config global <cmd>        Manage global configuration.
   put <path> [...]           Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]          Copy to shared only if local is newer. If input is a directory, push all files under it.
   pushall                    Push all local files to shared if local is newer.
