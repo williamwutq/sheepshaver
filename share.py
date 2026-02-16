@@ -252,6 +252,44 @@ def recursive_apply_noskip(func, path, **kwargs):
         return 0
     else:
         return func(p, **kwargs)
+    
+
+def create_file_that_looks_like_created_on_epoch(path, **kwargs):
+    """Create a file with modification time set to epoch (Jan 1, 1970)"""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # Print message if exists but not epoch time
+    if p.exists():
+        mtime = p.stat().st_mtime
+        if not file_is_newer(mtime, 1):  # if mtime is not newer than epoch
+            if not kwargs.get('suppress_extra', False):
+                print(f"{kwargs.get('print_prefix', '')}File already looks like created on epoch, skipping: {path}")
+            return
+        else:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{kwargs.get('print_prefix', '')}File already exists with non-epoch time, skipping: {path}")
+            return
+    p.touch()
+    epoch_time = 0
+    os.utime(p, (epoch_time, epoch_time))
+
+
+def cmd_ask(local_file, **kwargs):
+    """Ask other user to share a file by creating an empty file in shared location with epoch time"""
+    print_prefix = kwargs.get('print_prefix', '')
+    shared_path = get_shared_path(local_file)
+    if shared_path is None:
+        return 1
+    if isinstance(shared_path, Path):
+        shared_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        create_file_that_looks_like_created_on_epoch(shared_path, **kwargs)
+    except Exception as e:
+        if not kwargs.get('suppress_error', False):
+            print(f"{print_prefix}Error: Failed to create ask file in shared: {e}")
+        return 1
+    print(f"{print_prefix}✓ Asked for sharing: {local_file} (created ask file in shared)")
+    return 0
 
 
 def cmd_put(local_file, **kwargs):
@@ -1436,6 +1474,7 @@ Commands:
   config override            Override global config files with a .shareoverride in current directory.
   config remove              Remove global config overrides stored in .shareoverride from current directory.
   config global <cmd>        Manage global configuration.
+  ask <path> [...]           Ask other user to share a file by creating an empty file in shared location with epoch time.
   put <path> [...]           Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
   push <path> [...]          Copy to shared only if local is newer. If input is a directory, push all files under it.
   pushall                    Push all local files to shared if local is newer.
@@ -1661,6 +1700,10 @@ Examples:
               f"{print_prefix}'share' is not automatically updatable; see Github source for updates. " \
               "To obtain the github source, run 'source'.")
         return 1
+    elif command == 'create':
+        print(f"{print_prefix}Error: Unknown command 'create'. Did you mean 'ask' or 'push'?\n" \
+              f"{print_prefix}'share' does not require creating files; simply run 'put' or 'push' to add files to shared.")
+        return 1
     elif command == 'status' and len(file_paths) > 0:
         return cmd_status_local(file_paths, **opts)
 
@@ -1675,6 +1718,8 @@ Examples:
         'rm': cmd_remove,
         'remove': cmd_remove,
         'audit': cmd_audit,
+        'ask': cmd_ask,
+        'touch': cmd_ask,
     }
 
     if command not in commands:

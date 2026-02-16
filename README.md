@@ -65,6 +65,7 @@ share config show            # Show current configuration.
 share config override        # Override global config files with a .shareoverride in current directory.
 share config remove          # Remove global config overrides stored in .shareoverride from current directory.
 share config global <cmd>    # Manage global configuration.
+share ask <path> [...]       # Ask other user to share a file by creating an empty file in shared location with epoch time.
 share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
 share pushall                # Push all local files to shared if local is newer
