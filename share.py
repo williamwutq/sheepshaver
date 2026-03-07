@@ -173,7 +173,49 @@ def file_copy(src, dst, **kwargs):
                 apple_double.unlink()
             except Exception:
                 pass
-    
+
+
+def parse_remote_path(path_str):
+    """Parse 'user@host:/path' into (user, host, path)"""
+    import re
+    match = re.match(r'([^@]+)@([^:]+):(.*)', path_str)
+    if match:
+        return match.groups()
+    return None, None, path_str
+
+
+def remote_file_exists(user, host, path):
+    """Return True if remote file exists via SSH"""
+    try:
+        result = subprocess.run(
+            ['ssh', f'{user}@{host}', f'test -f "{path}" && echo 1 || echo 0'],
+            capture_output=True, text=True)
+        return result.stdout.strip() == '1'
+    except Exception:
+        return False
+
+
+def get_remote_mtime(user, host, path):
+    """Return remote file mtime as float, or None on failure"""
+    try:
+        result = subprocess.run(
+            ['ssh', f'{user}@{host}',
+             f'stat -c "%Y" "{path}" 2>/dev/null || stat -f "%m" "{path}"'],
+            capture_output=True, text=True)
+        return float(result.stdout.strip())
+    except Exception:
+        return None
+
+
+def list_remote_files(user, host, remote_root):
+    """List all files under remote_root via SSH find; returns list of absolute remote paths"""
+    try:
+        result = subprocess.run(
+            ['ssh', f'{user}@{host}', f'find "{remote_root}" -type f'],
+            capture_output=True, text=True)
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except Exception:
+        return []
 
 
 def looks_like_private(name):
@@ -277,6 +319,9 @@ def create_file_that_looks_like_created_on_epoch(path, **kwargs):
 def cmd_ask(local_file, **kwargs):
     """Ask other user to share a file by creating an empty file in shared location with epoch time"""
     print_prefix = kwargs.get('print_prefix', '')
+    local_path = Path(local_file)
+    if local_path.is_dir():
+        return recursive_apply_skips(cmd_ask, local_path, **kwargs)
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
@@ -337,22 +382,41 @@ def cmd_push(local_file, **kwargs):
     if shared_path is None:
         return 1
 
-    # If shared doesn't exist, always push
-    if isinstance(shared_path, Path) and not shared_path.exists():
-        shared_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        file_copy(local_path, shared_path, **kwargs)
-    except Exception as e:
-        if not kwargs.get('suppress_error', False):
-            print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
-        return 1
-    print(f"{print_prefix}✓ Pushed: {local_file} → {shared_path} (new)")
-    return 0
-
-    # Compare modification times
     local_mtime = local_path.stat().st_mtime
-    shared_mtime = shared_path.stat().st_mtime
 
+    if isinstance(shared_path, str):
+        # Remote path: use SSH to check existence and mtime
+        user, host, path = parse_remote_path(shared_path)
+        exists = remote_file_exists(user, host, path)
+        if exists:
+            remote_mtime = get_remote_mtime(user, host, path)
+            if remote_mtime is not None and not file_is_newer(local_mtime, remote_mtime):
+                if not kwargs.get('suppress_extra', False):
+                    print(f"{print_prefix}⊘ Not pushed: {local_file} (shared is newer or same)")
+                return 0
+        label = "(new)" if not exists else "(local newer)"
+        try:
+            file_copy(local_path, shared_path, **kwargs)
+        except Exception as e:
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
+            return 1
+        print(f"{print_prefix}✓ Pushed: {local_file} → {shared_path} {label}")
+        return 0
+
+    # Local shared path
+    if not shared_path.exists():
+        shared_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            file_copy(local_path, shared_path, **kwargs)
+        except Exception as e:
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
+            return 1
+        print(f"{print_prefix}✓ Pushed: {local_file} → {shared_path} (new)")
+        return 0
+
+    shared_mtime = shared_path.stat().st_mtime
     if file_is_newer(local_mtime, shared_mtime):
         try:
             file_copy(local_path, shared_path, **kwargs)
@@ -363,7 +427,8 @@ def cmd_push(local_file, **kwargs):
         print(f"{print_prefix}✓ Pushed: {local_file} (local newer)")
         return 0
     else:
-        print(f"{print_prefix}⊘ Not pushed: {local_file} (shared is newer or same)")
+        if not kwargs.get('suppress_extra', False):
+            print(f"{print_prefix}⊘ Not pushed: {local_file} (shared is newer or same)")
         return 0
     
 
@@ -376,9 +441,37 @@ def cmd_push_all(**kwargs):
         return 1
     
     if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Push all not supported for remote shared root")
-        return 1
-    
+        # Remote shared root: list remote files, push local→remote if local is newer
+        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        remote_files = list_remote_files(user, host, remote_root)
+        count = 0
+        for remote_file_path in remote_files:
+            if not remote_file_path.startswith(remote_root):
+                continue
+            rel = remote_file_path[len(remote_root):].lstrip('/')
+            local_file = SHARE_PATH / rel
+            if not file_exists_and_valid(local_file):
+                continue
+            local_mtime = local_file.stat().st_mtime
+            remote_mtime = get_remote_mtime(user, host, remote_file_path)
+            shared_str = f"{user}@{host}:{remote_file_path}"
+            if remote_mtime is not None and not file_is_newer(local_mtime, remote_mtime):
+                continue
+            try:
+                file_copy(local_file, shared_str, **kwargs)
+            except Exception as e:
+                if not kwargs.get('suppress_error', False):
+                    print(f"{print_prefix}Error: Failed to push {local_file} to shared: {e}")
+                continue
+            label = "(new)" if remote_mtime is None else "(local newer)"
+            print(f"{print_prefix}✓ Pushed: {local_file} → {shared_str} {label}")
+            count += 1
+        if count == 0:
+            print(f"{print_prefix}✓ Already up to date")
+        else:
+            print(f"✓ Pushed {count} files")
+        return 0
+
     count = 0
 
     for remote_file in SHARED_ROOT.rglob('*'):
@@ -437,7 +530,13 @@ def cmd_get(local_file, **kwargs):
     if shared_path is None:
         return 1
 
-    if not shared_path.exists():
+    if isinstance(shared_path, str):
+        user, host, path = parse_remote_path(shared_path)
+        if not remote_file_exists(user, host, path):
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}Error: File not shared: {local_file}")
+            return 1
+    elif not shared_path.exists():
         if not kwargs.get('suppress_error', False):
             print(f"{print_prefix}Error: File not shared: {local_file}")
         return 1
@@ -463,6 +562,39 @@ def cmd_pull(local_file, **kwargs):
     shared_path = get_shared_path(local_file)
     if shared_path is None:
         return 1
+
+    if isinstance(shared_path, str):
+        # Remote path: use SSH helpers
+        user, host, path = parse_remote_path(shared_path)
+        if not remote_file_exists(user, host, path):
+            if not kwargs.get('suppress_error', False):
+                print(f"{print_prefix}Error: File not shared: {local_file}")
+            return 1
+        if not local_path.exists():
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                file_copy(shared_path, local_path, **kwargs)
+            except Exception as e:
+                if not kwargs.get('suppress_error', False):
+                    print(f"{print_prefix}Error: Failed to pull {local_file} from shared: {e}")
+                return 1
+            print(f"{print_prefix}✓ Pulled: {local_file} (new locally)")
+            return 0
+        local_mtime = local_path.stat().st_mtime
+        remote_mtime = get_remote_mtime(user, host, path)
+        if remote_mtime is None or file_is_newer(remote_mtime, local_mtime):
+            try:
+                file_copy(shared_path, local_path, **kwargs)
+            except Exception as e:
+                if not kwargs.get('suppress_error', False):
+                    print(f"{print_prefix}Error: Failed to pull {local_file} from shared: {e}")
+                return 1
+            print(f"{print_prefix}✓ Pulled: {local_file} (shared newer)")
+            return 0
+        else:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{print_prefix}⊘ Not pulled: {local_file} (local is newer or same)")
+            return 0
 
     if not shared_path.exists():
         if not kwargs.get('suppress_error', False):
@@ -509,9 +641,45 @@ def cmd_pull_all(**kwargs):
         return 1
     
     if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Pull all not supported for remote shared root")
-        return 1
-    
+        # Remote shared root: list remote files, pull remote→local if remote is newer
+        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        remote_files = list_remote_files(user, host, remote_root)
+        count = 0
+        for remote_file_path in remote_files:
+            if not remote_file_path.startswith(remote_root):
+                continue
+            rel = remote_file_path[len(remote_root):].lstrip('/')
+            local_file = SHARE_PATH / rel
+            shared_str = f"{user}@{host}:{remote_file_path}"
+            if not local_file.exists():
+                local_file.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    file_copy(shared_str, local_file, **kwargs)
+                except Exception as e:
+                    if not kwargs.get('suppress_error', False):
+                        print(f"{print_prefix}Error: Failed to pull {local_file} from shared: {e}")
+                    continue
+                print(f"{print_prefix}✓ Pulled: {local_file} (new locally)")
+                count += 1
+                continue
+            local_mtime = local_file.stat().st_mtime
+            remote_mtime = get_remote_mtime(user, host, remote_file_path)
+            if remote_mtime is None or file_is_newer(remote_mtime, local_mtime):
+                try:
+                    file_copy(shared_str, local_file, **kwargs)
+                except Exception as e:
+                    if not kwargs.get('suppress_error', False):
+                        print(f"{print_prefix}Error: Failed to pull {local_file} from shared: {e}")
+                    continue
+                print(f"{print_prefix}✓ Pulled: {local_file} (shared newer)")
+                count += 1
+        if count == 0:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{print_prefix}✓ Already up to date")
+        else:
+            print(f"✓ Pulled {count} files")
+        return 0
+
     count = 0
 
     for shared_file in SHARED_ROOT.rglob('*'):
@@ -570,8 +738,10 @@ def cmd_sync(local_file, **kwargs):
         return 1
 
     local_exists = file_exists_and_valid(local_path)
-    if isinstance(shared_path, str):
-        shared_exists = True  # assume exists for remote
+    is_remote = isinstance(shared_path, str)
+    if is_remote:
+        r_user, r_host, r_path = parse_remote_path(shared_path)
+        shared_exists = remote_file_exists(r_user, r_host, r_path)
     else:
         shared_exists = shared_path.exists()
 
@@ -611,7 +781,20 @@ def cmd_sync(local_file, **kwargs):
 
     # Both exist, compare times
     local_mtime = local_path.stat().st_mtime
-    shared_mtime = shared_path.stat().st_mtime
+    if is_remote:
+        shared_mtime = get_remote_mtime(r_user, r_host, r_path)
+        if shared_mtime is None:
+            # Can't compare; default to pushing local
+            try:
+                file_copy(local_path, shared_path, **kwargs)
+            except Exception as e:
+                if not kwargs.get('suppress_error', False):
+                    print(f"{print_prefix}Error: Failed to sync {local_file} to shared: {e}")
+                return 1
+            print(f"{print_prefix}✓ Synced: {local_file} → shared (local newer)")
+            return 0
+    else:
+        shared_mtime = shared_path.stat().st_mtime
 
     if file_is_newer(local_mtime, shared_mtime):
         try:
@@ -646,9 +829,75 @@ def cmd_sync_all(**kwargs):
         return 1
     
     if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Sync all not supported for remote shared root")
-        return 1
-    
+        # Remote shared root: sync files from both sides
+        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        remote_files = list_remote_files(user, host, remote_root)
+        remote_rel_set = set()
+        count = 0
+        # Pull/sync remote→local for files that exist in remote
+        for remote_file_path in remote_files:
+            if not remote_file_path.startswith(remote_root):
+                continue
+            rel = remote_file_path[len(remote_root):].lstrip('/')
+            remote_rel_set.add(rel)
+            local_file = SHARE_PATH / rel
+            shared_str = f"{user}@{host}:{remote_file_path}"
+            local_exists = file_exists_and_valid(local_file)
+            if not local_exists:
+                local_file.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    file_copy(shared_str, local_file, **kwargs)
+                except Exception as e:
+                    if not kwargs.get('suppress_error', False):
+                        print(f"{print_prefix}Error: Failed to sync {local_file} from shared: {e}")
+                    continue
+                print(f"{print_prefix}✓ Synced: shared → {local_file} (new)")
+                count += 1
+                continue
+            local_mtime = local_file.stat().st_mtime
+            remote_mtime = get_remote_mtime(user, host, remote_file_path)
+            if remote_mtime is None or file_is_newer(local_mtime, remote_mtime):
+                try:
+                    file_copy(local_file, shared_str, **kwargs)
+                except Exception as e:
+                    if not kwargs.get('suppress_error', False):
+                        print(f"{print_prefix}Error: Failed to sync {local_file} to shared: {e}")
+                    continue
+                print(f"{print_prefix}✓ Synced: {local_file} → shared (local newer)")
+                count += 1
+            elif file_is_newer(remote_mtime, local_mtime):
+                try:
+                    file_copy(shared_str, local_file, **kwargs)
+                except Exception as e:
+                    if not kwargs.get('suppress_error', False):
+                        print(f"{print_prefix}Error: Failed to sync {local_file} from shared: {e}")
+                    continue
+                print(f"{print_prefix}✓ Synced: shared → {local_file} (shared newer)")
+                count += 1
+        # Push local→remote for files only in local (not yet in remote)
+        for local_file in SHARE_PATH.rglob('*'):
+            if not local_file.is_file():
+                continue
+            rel = str(local_file.relative_to(SHARE_PATH))
+            if rel in remote_rel_set:
+                continue
+            remote_file_path = f"{remote_root}/{rel}"
+            shared_str = f"{user}@{host}:{remote_file_path}"
+            try:
+                file_copy(local_file, shared_str, **kwargs)
+            except Exception as e:
+                if not kwargs.get('suppress_error', False):
+                    print(f"{print_prefix}Error: Failed to sync {local_file} to shared: {e}")
+                continue
+            print(f"{print_prefix}✓ Synced: {local_file} → shared (new)")
+            count += 1
+        if count == 0:
+            if not kwargs.get('suppress_extra', False):
+                print(f"{print_prefix}✓ Already up to date")
+        else:
+            print(f"✓ Synced {count} files")
+        return 0
+
     count = 0
 
     # Walk through shared directory
@@ -736,8 +985,10 @@ def cmd_check(local_file, **kwargs):
         return 1
 
     local_exists = file_exists_and_valid(local_path)
-    if isinstance(shared_path, str):
-        shared_exists = None  # unknown
+    is_remote = isinstance(shared_path, str)
+    if is_remote:
+        r_user, r_host, r_path = parse_remote_path(shared_path)
+        shared_exists = remote_file_exists(r_user, r_host, r_path)
     else:
         shared_exists = shared_path.exists()
 
@@ -746,16 +997,8 @@ def cmd_check(local_file, **kwargs):
     print(f"{print_prefix}Shared path: {shared_path}")
     print()
 
-    if not local_exists and (shared_exists is False or shared_exists is None):
+    if not local_exists and not shared_exists:
         print(f"{print_prefix}Status: ✗ Does not exist in either location")
-        return 0
-
-    if shared_exists is None:
-        print(f"{print_prefix}Status: ? Shared is remote, cannot check existence")
-        if not kwargs.get('suppress_extra', False):
-            if local_exists:
-                local_time = format_time(local_path.stat().st_mtime)
-                print(f"{print_prefix}Local: Modified {local_time}")
         return 0
 
     if not shared_exists:
@@ -769,25 +1012,31 @@ def cmd_check(local_file, **kwargs):
 
     if not local_exists:
         print(f"{print_prefix}Status: ⊘ Only in shared (not in local)")
-        shared_time = format_time(shared_path.stat().st_mtime)
         if not kwargs.get('suppress_extra', False):
-            print(f"{print_prefix}Shared: Modified {shared_time}")
+            if is_remote:
+                remote_mtime = get_remote_mtime(r_user, r_host, r_path)
+                if remote_mtime is not None:
+                    print(f"{print_prefix}Shared: Modified {format_time(remote_mtime)}")
+            else:
+                print(f"{print_prefix}Shared: Modified {format_time(shared_path.stat().st_mtime)}")
             print(f"{print_prefix}→ Use 'share get' or 'share pull' to retrieve")
         return 0
 
     # Both exist, compare
     local_mtime = local_path.stat().st_mtime
-    shared_mtime = shared_path.stat().st_mtime
+    shared_mtime = get_remote_mtime(r_user, r_host, r_path) if is_remote else shared_path.stat().st_mtime
 
     local_time_str = format_time(local_mtime)
-    shared_time_str = format_time(shared_mtime)
+    shared_time_str = format_time(shared_mtime) if shared_mtime is not None else "(unavailable)"
 
     if not kwargs.get('suppress_extra', False):
         print(f"{print_prefix}Local:  Modified {local_time_str}")
         print(f"{print_prefix}Shared: Modified {shared_time_str}")
         print()
 
-    if file_is_newer(local_mtime, shared_mtime):
+    if shared_mtime is None:
+        print(f"{print_prefix}Status: ? Cannot compare (remote mtime unavailable)")
+    elif file_is_newer(local_mtime, shared_mtime):
         print(f"{print_prefix}Status: ⚠ Local is newer")
         print(f"{print_prefix}→ Use 'share push' to update shared")
     elif file_is_newer(shared_mtime, local_mtime):
@@ -1225,8 +1474,18 @@ def cmd_list(**kwargs):
     """List all files in shared directory"""
     print_prefix = kwargs.get('print_prefix', '')
     if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Cannot list remote shared directory")
-        return 1
+        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        remote_files = list_remote_files(user, host, remote_root)
+        for remote_file_path in remote_files:
+            if not remote_file_path.startswith(remote_root):
+                print(f"{print_prefix}{remote_file_path}")
+                continue
+            rel = remote_file_path[len(remote_root):].lstrip('/')
+            if SHARE_PATH:
+                print(f"{print_prefix}{SHARE_PATH / rel}")
+            else:
+                print(f"{print_prefix}{rel}")
+        return 0
     if not SHARED_ROOT.exists():
         return 1
 
