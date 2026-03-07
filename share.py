@@ -1722,6 +1722,12 @@ Customization:
     - Only files under SHARE_PATH are managed; they are mapped to SHARED_ROOT
         preserving their relative path under SHARE_PATH.
 
+Remote (SSH):
+    - Set SHARED_ROOT to user@host:/path to share over SSH.
+    - Most commands are supported, including pushall, pullall, syncall, and list.
+    - 'status' and 'auditall' are not supported for remote SSH paths.
+    - Passwordless SSH key authentication is required for remote operations.
+
 Commands:
   <path>                     A shortcut for 'share sync <path>'. Works only for a single path.
   info                       Show configuration information.
@@ -1764,7 +1770,7 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
-    parser.add_argument('-v', '--version', action='version', version='share utility version 1.5')
+    parser.add_argument('-v', '--version', action='version', version='share utility version 1.6')
     # Flags, --suppress-extra, --suppress-error, --suppress-critical:
     parser.add_argument('-next', '-sext', '--suppress-extra', '--no-extra', action='store_true', help='Suppress extra informational messages')
     parser.add_argument('-nerr', '-serr', '--suppress-error', '--no-error', action='store_true', help='Suppress error messages')
@@ -1814,7 +1820,7 @@ Examples:
     if command == 'status' and len(file_paths) == 0:
         return cmd_status(**opts)
     elif command == 'version':
-        print(f"{print_prefix}share utility version 1.5")
+        print(f"{print_prefix}share utility version 1.6")
         return 0
     elif command == 'author':
         print(f"{print_prefix}Created by William Wu")

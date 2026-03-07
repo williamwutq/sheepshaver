@@ -150,7 +150,7 @@ For sharing files with remote systems over SSH, set SHARED_ROOT to an SSH path:
 share config root user@remote-host:/path/to/shared/directory
 ```
 
-Then you can use individual file commands to transfer files to/from the remote system:
+Then you can use most commands to transfer files to/from the remote system:
 
 ```bash
 share put myfile.txt   # Upload file to remote
@@ -160,9 +160,13 @@ share pull myfile.txt  # Download only if remote is newer
 share sync myfile.txt  # Sync by copying whichever is newer
 share check myfile.txt # Check sync status
 share rm myfile.txt    # Remove file from remote
+share list             # List files on remote
+share pushall          # Push all local files to remote if local is newer
+share pullall          # Pull all remote files to local if remote is newer
+share syncall          # Sync all files by copying whichever is newer
 ```
 
-Note: Bulk operations (pushall, pullall, syncall, status, list, auditall) are not supported YET for remote SSH paths, as they require directory traversal that isn't easy to implement over SSH. Use individual file commands for remote sharing.
+Note: `status` and `auditall` are not supported for remote SSH paths. All other commands, including bulk operations like `pushall`, `pullall`, `syncall`, and `list`, are fully supported over SSH.
 
 Ensure you have SSH key authentication set up for passwordless transfers, and that the remote user has write access to the specified directory. If the SSH connection fails, appropriate error messages will be displayed.
 
