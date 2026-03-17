@@ -187,7 +187,7 @@ def file_copy(src, dst, **kwargs):
                     except subprocess.CalledProcessError:
                         pass  # ignore if mkdir fails
         try:
-            subprocess.run(['scp', src_str, dst_str], check=True)
+            subprocess.run(['scp', '-p', src_str, dst_str], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         except subprocess.CalledProcessError as e:
             raise Exception(f"SCP failed: {e}")
     else:
