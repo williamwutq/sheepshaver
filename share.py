@@ -254,74 +254,108 @@ def looks_like_private(name):
     return any(name.startswith(prefix) for prefix in private_prefix)
 
 
-def recursive_apply_skips(func, path, **kwargs):
-    """Recursively apply func to all files under path"""
-    ignore_patterns = kwargs.get('ignore_patterns', [])
-    p = Path(path)
-    res = 0
-    if p.is_dir():
-        # Read .shareignore if exists
-        if (p / '.shareignore').exists():
-            with open(p / '.shareignore', 'r') as f:
-                new_patterns = []
-                for line in f:
-                    pattern = line.split('#', 1)[0].strip()
-                    if pattern:
-                        if pattern.startswith('/'):
-                            pattern = pattern[1:]
-                        new_patterns.append(pattern)
-            ignore_patterns = ignore_patterns + new_patterns
-            kwargs['ignore_patterns'] = ignore_patterns
-        new_print_prefix = kwargs.get('print_prefix', '') + '  '
-        kwargs['print_prefix'] = new_print_prefix
-        for sub_path in p.iterdir():
-            # Check against ignore patterns using fnmatch
-            if any(fnmatch.fnmatch(sub_path.name, pattern) or fnmatch.fnmatch(sub_path, pattern) for pattern in ignore_patterns):
-                continue
-            # Skip private-looking files
-            if looks_like_private(sub_path.name):
-                if not kwargs.get('suppress_extra', False):
-                    print(f"{new_print_prefix}⚠ {sub_path} looks like private; skipping.")
-                continue
-            if sub_path.is_file() or sub_path.is_dir():
-                res += func(sub_path, **kwargs)
-        if res != 0:
-            return res
-        return 0
+def _read_shareignore(local_dir):
+    """Read .shareignore patterns from a local directory"""
+    shareignore = Path(local_dir) / '.shareignore'
+    if not shareignore.exists():
+        return []
+    patterns = []
+    with open(shareignore) as f:
+        for line in f:
+            p = line.split('#', 1)[0].strip()
+            if p:
+                patterns.append(p.lstrip('/'))
+    return patterns
+
+
+def _list_shared_children(shared_path):
+    """List (name, is_dir) tuples for direct children of a shared directory.
+    Returns [] if shared_path is not a directory or is inaccessible."""
+    if isinstance(shared_path, str):
+        user, host, remote_path = parse_remote_path(shared_path)
+        try:
+            result = subprocess.run(
+                ['ssh', f'{user}@{host}',
+                 f'find "{remote_path}" -maxdepth 1 -mindepth 1 \\( -type f -o -type d \\) 2>/dev/null'
+                 f' | while IFS= read -r p; do n=$(basename "$p");'
+                 f' [ -d "$p" ] && echo "d $n" || echo "f $n"; done'],
+                capture_output=True, text=True)
+            children = []
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith('d ') and len(line) > 2:
+                    children.append((line[2:], True))
+                elif line.startswith('f ') and len(line) > 2:
+                    children.append((line[2:], False))
+            return children
+        except Exception:
+            return []
     else:
+        sp = Path(shared_path)
+        if not sp.is_dir():
+            return []
+        return [(child.name, child.is_dir()) for child in sp.iterdir()]
+
+
+def recursive_apply(func, path, skip_private=True, **kwargs):
+    """Recursively apply func to all file entries under path.
+
+    - Existing local directory: iterates children with .shareignore support and
+      optional private-file skipping.
+    - Non-existent local path: enumerates from the shared counterpart (local or
+      remote), so commands like 'get'/'pull' work on directories not yet present
+      locally.
+    - func is called only for leaf paths (files or unresolvable non-dirs).
+    """
+    p = Path(path)
+    ignore_patterns = list(kwargs.get('ignore_patterns', []))
+    print_prefix = kwargs.get('print_prefix', '')
+    new_prefix = print_prefix + '  '
+
+    def is_ignored(name, full_path):
+        return any(
+            fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(str(full_path), pat)
+            for pat in ignore_patterns
+        )
+
+    if p.is_dir():
+        local_patterns = _read_shareignore(p)
+        child_kwargs = dict(kwargs,
+                            ignore_patterns=ignore_patterns + local_patterns,
+                            print_prefix=new_prefix)
+        res = 0
+        for sub in p.iterdir():
+            if is_ignored(sub.name, sub):
+                continue
+            if skip_private and looks_like_private(sub.name):
+                if not kwargs.get('suppress_extra', False):
+                    print(f"{new_prefix}⚠ {sub} looks like private; skipping.")
+                continue
+            res += recursive_apply(func, sub, skip_private, **child_kwargs)
+        return res
+
+    elif not p.exists():
+        shared_root = kwargs.get('shared_root', SHARED_ROOT)
+        shared_path = get_shared_path(path, shared_root)
+        if shared_path is not None:
+            children = _list_shared_children(shared_path)
+            if children:
+                # suppress per-file errors when traversing from shared side
+                child_kwargs = dict(kwargs, print_prefix=new_prefix,
+                                    suppress_error=kwargs.get('suppress_error', True))
+                res = 0
+                for name, _ in children:
+                    child_local = p / name
+                    if is_ignored(name, child_local):
+                        continue
+                    if skip_private and looks_like_private(name):
+                        if not kwargs.get('suppress_extra', False):
+                            print(f"{new_prefix}⚠ {child_local} looks like private; skipping.")
+                        continue
+                    res += recursive_apply(func, child_local, skip_private, **child_kwargs)
+                return res
         return func(p, **kwargs)
 
-
-def recursive_apply_noskip(func, path, **kwargs):
-    """Recursively apply func to all files under path without skipping"""
-    ignore_patterns = kwargs.get('ignore_patterns', [])
-    kwargs['suppress_error'] = True  # Suppress errors for missing files
-    p = Path(path)
-    res = 0
-    if p.is_dir():
-        # Read .shareignore if exists
-        if (p / '.shareignore').exists():
-            with open(p / '.shareignore', 'r') as f:
-                new_patterns = []
-                for line in f:
-                    pattern = line.split('#', 1)[0].strip()
-                    if pattern:
-                        if pattern.startswith('/'):
-                            pattern = pattern[1:]
-                        new_patterns.append(pattern)
-            ignore_patterns = ignore_patterns + new_patterns
-            kwargs['ignore_patterns'] = ignore_patterns
-        new_print_prefix = kwargs.get('print_prefix', '') + '  '
-        kwargs['print_prefix'] = new_print_prefix
-        for sub_path in p.iterdir():
-            # Check against ignore patterns using fnmatch
-            if any(fnmatch.fnmatch(sub_path.name, pattern) or fnmatch.fnmatch(sub_path, pattern) for pattern in ignore_patterns):
-                continue
-            if sub_path.is_file() or sub_path.is_dir():
-                res += func(sub_path, **kwargs)
-        if res != 0:
-            return res
-        return 0
     else:
         return func(p, **kwargs)
     
@@ -350,9 +384,6 @@ def cmd_ask(local_file, **kwargs):
     """Ask other user to share a file by creating an empty file in shared location with epoch time"""
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
-    local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_skips(cmd_ask, local_path, **kwargs)
     shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
@@ -373,10 +404,6 @@ def cmd_put(local_file, **kwargs):
     local_path = Path(local_file)
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
-    if local_path.is_dir():
-        recursive_apply_skips(cmd_put, local_path, **kwargs)
-        return 0
-
     if not file_exists_and_valid(local_path):
         if not kwargs.get('suppress_error', False):
             print(f"{print_prefix}Error: Local file does not exist: {local_file}")
@@ -403,9 +430,6 @@ def cmd_push(local_file, **kwargs):
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_skips(cmd_push, local_path, **kwargs)
-
     if not file_exists_and_valid(local_path):
         if not kwargs.get('suppress_error', False):
             print(f"{print_prefix}Error: Local file does not exist: {local_file}")
@@ -558,9 +582,6 @@ def cmd_get(local_file, **kwargs):
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_noskip(cmd_get, local_path, **kwargs)
-
     shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
@@ -592,9 +613,6 @@ def cmd_pull(local_file, **kwargs):
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_noskip(cmd_pull, local_path, **kwargs)
-
     shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
@@ -782,10 +800,6 @@ def cmd_sync(local_file, **kwargs):
         shared_exists = remote_file_exists(r_user, r_host, r_path)
     else:
         shared_exists = shared_path.exists()
-
-    # If is path, recurse
-    if local_path.is_dir():
-        return recursive_apply_skips(cmd_sync, local_path, **kwargs)
 
     # If neither exists, error
     if not local_exists and not shared_exists:
@@ -1017,9 +1031,6 @@ def cmd_check(local_file, **kwargs):
     """Check the status of a file"""
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_skips(cmd_check, local_path, **kwargs)
-
     shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
@@ -1092,10 +1103,6 @@ def cmd_remove(local_file, **kwargs):
     """Remove file from shared location"""
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
-    local_path = Path(local_file)
-    if local_path.is_dir():
-        return recursive_apply_noskip(cmd_remove, local_path, **kwargs)
-
     shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
@@ -1722,7 +1729,7 @@ def cmd_auto(**kwargs):
             shared_equiv = shared_root / relative if isinstance(shared_root, Path) else None
             if shared_equiv and shared_equiv.exists() and any(shared_equiv.iterdir()):
                 if yes or ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
-                    return cmd_pull(current, **kwargs)
+                    return recursive_apply(cmd_pull, current, False, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
                         print(f"{print_prefix}No action taken.")
@@ -1734,7 +1741,7 @@ def cmd_auto(**kwargs):
         if shared_equiv is None or not shared_equiv.exists() or (shared_equiv.exists() and not any(shared_equiv.iterdir())):
             if any(current.rglob('*')):
                 if yes or ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
-                    return cmd_push(current, **kwargs)
+                    return recursive_apply(cmd_push, current, True, **kwargs)
                 else:
                     if not kwargs.get('suppress_extra', False):
                         print(f"{print_prefix}No action taken.")
@@ -1743,7 +1750,7 @@ def cmd_auto(**kwargs):
     if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
         if any(current.rglob('*')):
             if yes or ask_yes_no(f"{print_prefix}Sync all files in the current directory with shared?"):
-                return cmd_sync(current, **kwargs)
+                return recursive_apply(cmd_sync, current, True, **kwargs)
             else:
                 if not kwargs.get('suppress_extra', False):
                     print(f"{print_prefix}No action taken.")
@@ -2227,17 +2234,18 @@ Examples:
         return dispatch_with_roots(lambda o: cmd_status_local(file_paths, **o))
 
     # Dispatch to appropriate command
+    # Tuple: (handler_fn, skip_private) — skip_private=True skips dotfiles/private names
     file_commands = {
-        'put': cmd_put,
-        'push': cmd_push,
-        'get': cmd_get,
-        'pull': cmd_pull,
-        'sync': cmd_sync,
-        'check': cmd_check,
-        'rm': cmd_remove,
-        'remove': cmd_remove,
-        'ask': cmd_ask,
-        'touch': cmd_ask,
+        'put':    (cmd_put,    True),
+        'push':   (cmd_push,   True),
+        'get':    (cmd_get,    False),
+        'pull':   (cmd_pull,   False),
+        'sync':   (cmd_sync,   True),
+        'check':  (cmd_check,  True),
+        'rm':     (cmd_remove, False),
+        'remove': (cmd_remove, False),
+        'ask':    (cmd_ask,    True),
+        'touch':  (cmd_ask,    True),
     }
     dir_commands = {
         'audit': cmd_audit,
@@ -2245,7 +2253,7 @@ Examples:
 
     if command not in file_commands and command not in dir_commands:
         if path_exists_and_valid(command) and command not in ['.', '..']:
-            return dispatch_with_roots(lambda o: cmd_sync(command, **o))
+            return dispatch_with_roots(lambda o: recursive_apply(cmd_sync, command, True, **o))
         print(f"{print_prefix}Error: Unknown command '{command}'")
         print(f"{print_prefix}Use 'share --help' for usage information")
         return 1
@@ -2258,20 +2266,21 @@ Examples:
         # dir-argument commands (audit) receive the full file_paths list
         return dispatch_with_roots(lambda o: dir_commands[command](file_paths, **o))
 
+    cmd_fn, skip_prv = file_commands[command]
     if len(file_paths) > 1:
         # Multiple files: iterate files per root
         def run_multi_files(o):
             res = 0
             for f in file_paths:
-                res += file_commands[command](f, **o)
+                res += recursive_apply(cmd_fn, f, skip_prv, **o)
             if res != 0:
                 print(f"{o.get('print_prefix', '')}⚠ '{command}' completed with {res} errors")
                 return 1
             return 0
         return dispatch_with_roots(run_multi_files)
     else:
-        # Single file
-        return dispatch_with_roots(lambda o: file_commands[command](file_paths[0], **o))
+        # Single file or directory
+        return dispatch_with_roots(lambda o: recursive_apply(cmd_fn, file_paths[0], skip_prv, **o))
 
 
 if __name__ == "__main__":
