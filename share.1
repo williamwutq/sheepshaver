@@ -19,13 +19,18 @@ A shortcut for 'share sync <path>'. Works only for a single path.
 is a utility to synchronize files between a local directory tree and a shared directory, preserving relative paths. It is useful for sharing files between different users or systems.
 
 .SH CONFIGURATION
-The local root (SHARE_PATH) and shared root (SHARED_ROOT) can be customized:
+The local root (SHARE_PATH) and shared roots (SHARED_ROOTS) can be customized:
 .TP
 ~/.sharepath
 Absolute path to the local root directory. Only files under this directory are managed.
 .TP
 ~/.shareroot
-Absolute path to the shared root directory. Defaults to ~/Shared/dump if not set.
+One shared root per line. Each line is either an absolute local path or a remote SSH path in the form
+.IR user@host:/path .
+Defaults to ~/Shared/dump if not set. A single\-line file behaves exactly as before.
+When multiple roots are configured, commands operate on each root independently and output lines are prefixed with
+.BI [ root\-path ]
+to identify which root they refer to.
 .TP
 **/.shareoverride
 Directory containing local overrides for SHARE_PATH and SHARED_ROOT. If this directory exists in any ancestor of the current directory, its config files will be used instead of the global ones.
@@ -77,7 +82,15 @@ Show configuration information.
 Set SHARE_PATH to specified path. This is the local root.
 .TP
 .B config root <path>
-Set SHARED_ROOT to specified path. This is the shared root.
+Replace all shared roots with a single root. This is the shared root. Backward compatible with previous single\-root behavior.
+.TP
+.B config root add <path>
+Add an additional shared root without removing existing ones.
+.TP
+.B config root remove <path>
+Remove a specific shared root. At least one root must remain; use
+.B config root
+to replace the last root instead.
 .TP
 .B config show
 Show current configuration.
@@ -193,22 +206,59 @@ After finishing, unmount the drive safely:
 .fi
 Reset shared root to default if needed.
 
+.SS Sync to multiple destinations simultaneously
+Add each destination as a separate root. For example, to keep both a local shared partition and a remote backup server in sync:
+.nf
+	share config root /Volumes/SharedPartition/dump
+	share config root add user@backup-server:/home/shared
+.fi
+Now \fBshare push myfile.txt\fR pushes to both destinations and \fBshare status\fR reports each root independently.
+To remove one root later:
+.nf
+	share config root remove user@backup-server:/home/shared
+.fi
+
 .SS Share over SSH
-You can set the SHARED_ROOT to a remote path via SSH:
+You can set a shared root to a remote path via SSH:
 .nf
 	share config root user@remote_host:/path/to/shared_directory
 .fi
 Ensure you have passwordless SSH access to the remote host. You can then use most commands including \fBshare put\fR, \fBshare push\fR, \fBshare sync\fR, \fBshare pushall\fR, \fBshare pullall\fR, \fBshare syncall\fR, and \fBshare list\fR to manage files between your local directory and the remote shared directory.
 
-Note: \fBstatus\fR and \fBauditall\fR are not supported for remote SSH paths.
+Note: \fBstatus\fR and \fBauditall\fR are not supported for remote SSH roots.
+
+.SH MULTIPLE ROOTS
+.B share
+supports syncing to multiple shared roots simultaneously by placing one root per line in
+.IR ~/.shareroot .
+.PP
+All sync commands (put, push, get, pull, sync, check, rm, pushall, pullall, syncall, list, status, audit, auditall) operate on every configured root independently in sequence. When more than one root is configured, each output line is prefixed with the corresponding root path in square brackets so results from different roots can be distinguished.
+.PP
+Managing roots:
+.TP
+.B share config root <path>
+Replace all roots with one (backward compatible).
+.TP
+.B share config root add <path>
+Append a root.
+.TP
+.B share config root remove <path>
+Remove a specific root.
+.PP
+Example ~/.shareroot with two roots:
+.nf
+/Volumes/SharedPartition/dump
+user@backup-server:/home/shared
+.fi
 
 .SH NOTES
 - Only files under SHARE_PATH are managed. Attempts to share files outside this path will be rejected.
-- The mapping preserves the relative path under SHARE_PATH in SHARED_ROOT.
+- The mapping preserves the relative path under SHARE_PATH in each shared root.
+- With a single root in ~/.shareroot, behavior is identical to previous versions.
 
 .SH AUTHOR
 William Wu, 2026
 .SH VERSION
-1.6
+1.7
 .SH LICENSE
 GPLv2 or later

@@ -2,7 +2,7 @@
 
 A simple utility to sync files between a local directory tree and a shared directory, preserving relative paths. Useful for sharing files between different users or systems. This utility also work via SSH for remote file sharing, but that is not the primary use case.
 
-This is entirely local and does not require any network setup or cloud services unless you want to. It only manages files under a configurable local root directory (SHARE_PATH) and syncs them to/from a shared root directory (SHARED_ROOT).
+This is entirely local and does not require any network setup or cloud services unless you want to. It only manages files under a configurable local root directory (SHARE_PATH) and syncs them to/from one or more shared root directories (SHARED_ROOTS).
 
 ## Intention
 Personally, I run dual boot macOS and Linux on my laptop. I wanted a simple way to share files between the two OSes without relying on cloud services or complex network setups. This utility allows me to easily push and pull files to a shared directory that both OSes can access.
@@ -27,19 +27,20 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 ```
 
 ## Features
-- Sync files between your local directory and a shared directory
+- Sync files between your local directory and one or more shared directories
 - Only manages files under a configurable local root (SHARE_PATH)
-- Shared root (SHARED_ROOT) is also configurable
+- Supports multiple shared roots (SHARED_ROOTS) — each root is synced independently
 - Supports push, pull, put, get, sync, check, remove, and status commands
 - Supports multiple files and directories as input for most commands
 - Configurable ignore patterns similar to .gitignore
-- Informative output with configurable verbosity levels
+- Informative output with configurable verbosity levels; multi-root output is prefixed per root
 - Works over SSH for remote file sharing
 - Overridable configuration per directory via .shareoverride files
 
 ## Configuration
 - Set your local root by creating a file `~/.sharepath` containing the absolute path
-- Set your shared root by creating a file `~/.shareroot` containing the absolute path (defaults to `~/Shared/dump` if not set)
+- Set your shared root(s) by creating a file `~/.shareroot` with **one root per line** — each line is either an absolute local path or `user@host:/path` for SSH (defaults to `~/Shared/dump` if not set)
+- A single-line `~/.shareroot` behaves exactly as before (full backward compatibility)
 - Override global config files with a `.shareoverride` in the current directory
 - Configurable ignore patterns via `.shareignore` (similar to .gitignore)
 - Only files under SHARE_PATH are managed; attempts to share files outside this path will be rejected
@@ -55,16 +56,18 @@ sudo cp share.1 /usr/local/share/man/man1/share.1
 
 ## Usage
 ```
-share <path>                 # A shortcut for 'share sync <path>'. Works only for a single path.
-share info                   # Show configuration information.
-share auto                   # Perform automatic actions based on current directory context.
-share list                   # List all files in shared directory.
-share config path <path>     # Set SHARE_PATH to specified path. This is the local root.
-share config root <path>     # Set SHARED_ROOT to specified path. This is the shared root.
-share config show            # Show current configuration.
-share config override        # Override global config files with a .shareoverride in current directory.
-share config remove          # Remove global config overrides stored in .shareoverride from current directory.
-share config global <cmd>    # Manage global configuration.
+share <path>                        # A shortcut for 'share sync <path>'. Works only for a single path.
+share info                          # Show configuration information.
+share auto                          # Perform automatic actions based on current directory context.
+share list                          # List all files in shared directory.
+share config path <path>            # Set SHARE_PATH to specified path. This is the local root.
+share config root <path>            # Replace all shared roots with a single root.
+share config root add <path>        # Add an additional shared root without removing existing ones.
+share config root remove <path>     # Remove a specific shared root (must keep at least one).
+share config show                   # Show current configuration.
+share config override               # Override global config files with a .shareoverride in current directory.
+share config remove                 # Remove global config overrides stored in .shareoverride from current directory.
+share config global <cmd>           # Manage global configuration.
 share ask <path> [...]       # Ask other user to share a file by creating an empty file in shared location with epoch time.
 share put <path> [...]       # Copy file(s) to shared (always overwrite). If input is a directory, put all files under it.
 share push <path> [...]      # Copy to shared only if local is newer. If input is a directory, push all files under it.
@@ -142,9 +145,34 @@ umount /mnt/external_drive
 share config root ~/Shared/dump  # Reset shared root to default
 ```
 
+### Sync to multiple destinations simultaneously
+
+Add each destination as a separate root. For example, to keep a local shared partition and a remote backup server in sync at the same time:
+
+```bash
+share config root /mnt/external_drive
+share config root add user@backup-server:/home/shared
+```
+
+Now `share push myfile.txt` pushes to both destinations and `share status` reports each root independently, prefixed with its path:
+
+```
+[/mnt/external_drive] Shared directory: /mnt/external_drive
+[/mnt/external_drive] ✓ Synced: 12 files
+...
+[user@backup-server:/home/shared] Shared directory: user@backup-server:/home/shared (remote)
+[user@backup-server:/home/shared] Cannot check status of remote shared directory
+```
+
+To remove a root later:
+
+```bash
+share config root remove user@backup-server:/home/shared
+```
+
 ### Share via SSH
 
-For sharing files with remote systems over SSH, set SHARED_ROOT to an SSH path:
+For sharing files with remote systems over SSH, set a shared root to an SSH path:
 
 ```bash
 share config root user@remote-host:/path/to/shared/directory
@@ -166,7 +194,7 @@ share pullall          # Pull all remote files to local if remote is newer
 share syncall          # Sync all files by copying whichever is newer
 ```
 
-Note: `status` and `auditall` are not supported for remote SSH paths. All other commands, including bulk operations like `pushall`, `pullall`, `syncall`, and `list`, are fully supported over SSH.
+Note: `status` and `auditall` are not supported for remote SSH roots. All other commands, including bulk operations like `pushall`, `pullall`, `syncall`, and `list`, are fully supported over SSH.
 
 Ensure you have SSH key authentication set up for passwordless transfers, and that the remote user has write access to the specified directory. If the SSH connection fails, appropriate error messages will be displayed.
 

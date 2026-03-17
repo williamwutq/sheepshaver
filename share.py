@@ -2,9 +2,10 @@
 """
 Share utility - Sync files between local filesystem and a shared directory.
 
-You can customize the local root (SHARE_PATH) and shared root (SHARED_ROOT)
-by creating ~/.sharepath and ~/.shareroot files containing the absolute paths.
-Only files under SHARE_PATH are managed; they are mapped to SHARED_ROOT
+You can customize the local root (SHARE_PATH) and shared roots (SHARED_ROOTS)
+by creating ~/.sharepath and ~/.shareroot files. ~/.shareroot may contain one
+root per line (local absolute path or user@host:/path for SSH remote roots).
+Only files under SHARE_PATH are managed; they are mapped to each shared root
 preserving their relative path under SHARE_PATH.
 
 Copyright (C) 2026 William Wu
@@ -65,14 +66,43 @@ def load_path_config(config_file, default=None):
         pass
     return default
 
+def load_path_configs(config_file, default=None):
+    """Load one or more root paths from config file (one per line).
+    Backward compatible: single-line files return a one-element list."""
+    try:
+        config_dir = find_config_dir()
+        path = config_dir / config_file
+        if path.exists():
+            with open(path, 'r') as f:
+                lines = [l.strip() for l in f.readlines()]
+            roots = []
+            for line in lines:
+                if not line or line.startswith('#'):
+                    continue
+                if '@' in line and ':' in line:
+                    roots.append(line)
+                else:
+                    roots.append(Path(line).expanduser().resolve())
+            if roots:
+                return roots
+    except Exception:
+        pass
+    if default is not None:
+        return [default]
+    return [Path.home() / "Shared" / "dump"]
+
 SHARE_PATH = load_path_config('.sharepath')
-SHARED_ROOT = load_path_config('.shareroot', Path.home() / "Shared" / "dump")
+SHARED_ROOTS = load_path_configs('.shareroot', Path.home() / "Shared" / "dump")
+SHARED_ROOT = SHARED_ROOTS[0]  # primary root; backward-compat alias
 
 
-def get_shared_path(local_path):
-    """Convert local path to shared path, preserving relative path under SHARE_PATH"""
+def get_shared_path(local_path, shared_root=None):
+    """Convert local path to shared path, preserving relative path under SHARE_PATH.
+    shared_root defaults to global SHARED_ROOT when not provided."""
     if not local_path:
         return None
+    if shared_root is None:
+        shared_root = SHARED_ROOT
     abs_path = Path(local_path).resolve()
     if SHARE_PATH:
         try:
@@ -82,10 +112,10 @@ def get_shared_path(local_path):
             return None
     else:
         rel = abs_path.name  # fallback: just filename
-    if isinstance(SHARED_ROOT, str):
-        return f"{SHARED_ROOT}/{str(rel)}"
+    if isinstance(shared_root, str):
+        return f"{shared_root}/{str(rel)}"
     else:
-        return SHARED_ROOT / rel
+        return shared_root / rel
 
 
 def format_time(timestamp):
@@ -319,10 +349,11 @@ def create_file_that_looks_like_created_on_epoch(path, **kwargs):
 def cmd_ask(local_file, **kwargs):
     """Ask other user to share a file by creating an empty file in shared location with epoch time"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_skips(cmd_ask, local_path, **kwargs)
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
     if isinstance(shared_path, Path):
@@ -341,6 +372,7 @@ def cmd_put(local_file, **kwargs):
     """Copy local file to shared (always overwrite)"""
     local_path = Path(local_file)
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if local_path.is_dir():
         recursive_apply_skips(cmd_put, local_path, **kwargs)
         return 0
@@ -350,7 +382,7 @@ def cmd_put(local_file, **kwargs):
             print(f"{print_prefix}Error: Local file does not exist: {local_file}")
         return 1
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
     if isinstance(shared_path, Path):
@@ -369,6 +401,7 @@ def cmd_put(local_file, **kwargs):
 def cmd_push(local_file, **kwargs):
     """Copy local file to shared only if local is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_skips(cmd_push, local_path, **kwargs)
@@ -378,7 +411,7 @@ def cmd_push(local_file, **kwargs):
             print(f"{print_prefix}Error: Local file does not exist: {local_file}")
         return 1
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -435,14 +468,15 @@ def cmd_push(local_file, **kwargs):
 def cmd_push_all(**kwargs):
     """Push all local files under SHARE_PATH to SHARED_ROOT if local is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot push all.")
         return 1
-    
-    if isinstance(SHARED_ROOT, str):
+
+    if isinstance(shared_root, str):
         # Remote shared root: list remote files, push local→remote if local is newer
-        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        user, host, remote_root = parse_remote_path(shared_root)
         remote_files = list_remote_files(user, host, remote_root)
         count = 0
         for remote_file_path in remote_files:
@@ -469,17 +503,17 @@ def cmd_push_all(**kwargs):
         if count == 0:
             print(f"{print_prefix}✓ Already up to date")
         else:
-            print(f"✓ Pushed {count} files")
+            print(f"{print_prefix}✓ Pushed {count} files")
         return 0
 
     count = 0
 
-    for remote_file in SHARED_ROOT.rglob('*'):
+    for remote_file in shared_root.rglob('*'):
         if not remote_file.is_file():
             continue
         local_path = Path(remote_file)
         # Reconstruct local path
-        relative = local_path.relative_to(SHARED_ROOT)
+        relative = local_path.relative_to(shared_root)
         local_file = SHARE_PATH / relative
         local_path = Path(local_file)
 
@@ -515,18 +549,19 @@ def cmd_push_all(**kwargs):
     if count == 0:
         print(f"{print_prefix}✓ Already up to date")
     else:
-        print(f"✓ Pushed {count} files")
+        print(f"{print_prefix}✓ Pushed {count} files")
     return 0
 
 
 def cmd_get(local_file, **kwargs):
     """Copy shared file to local (always overwrite)"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_noskip(cmd_get, local_path, **kwargs)
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -555,11 +590,12 @@ def cmd_get(local_file, **kwargs):
 def cmd_pull(local_file, **kwargs):
     """Copy shared file to local only if shared is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_noskip(cmd_pull, local_path, **kwargs)
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -635,14 +671,15 @@ def cmd_pull(local_file, **kwargs):
 def cmd_pull_all(**kwargs):
     """Pull all shared files under SHARED_ROOT to SHARE_PATH if shared is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot pull all.")
         return 1
-    
-    if isinstance(SHARED_ROOT, str):
+
+    if isinstance(shared_root, str):
         # Remote shared root: list remote files, pull remote→local if remote is newer
-        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        user, host, remote_root = parse_remote_path(shared_root)
         remote_files = list_remote_files(user, host, remote_root)
         count = 0
         for remote_file_path in remote_files:
@@ -677,17 +714,17 @@ def cmd_pull_all(**kwargs):
             if not kwargs.get('suppress_extra', False):
                 print(f"{print_prefix}✓ Already up to date")
         else:
-            print(f"✓ Pulled {count} files")
+            print(f"{print_prefix}✓ Pulled {count} files")
         return 0
 
     count = 0
 
-    for shared_file in SHARED_ROOT.rglob('*'):
+    for shared_file in shared_root.rglob('*'):
         if not shared_file.is_file():
             continue
         shared_path = Path(shared_file)
         # Reconstruct local path
-        relative = shared_path.relative_to(SHARED_ROOT)
+        relative = shared_path.relative_to(shared_root)
         if SHARE_PATH:
             local_file = SHARE_PATH / relative
         else:
@@ -724,7 +761,7 @@ def cmd_pull_all(**kwargs):
         if not kwargs.get('suppress_extra', False):
             print(f"{print_prefix}✓ Already up to date")
     else:
-        print(f"✓ Pulled {count} files")
+        print(f"{print_prefix}✓ Pulled {count} files")
 
     return 0
 
@@ -732,8 +769,9 @@ def cmd_pull_all(**kwargs):
 def cmd_sync(local_file, **kwargs):
     """Sync by copying whichever version is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -823,14 +861,15 @@ def cmd_sync(local_file, **kwargs):
 def cmd_sync_all(**kwargs):
     """Sync all files under SHARE_PATH and SHARED_ROOT by copying whichever is newer"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot sync all.")
         return 1
-    
-    if isinstance(SHARED_ROOT, str):
+
+    if isinstance(shared_root, str):
         # Remote shared root: sync files from both sides
-        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+        user, host, remote_root = parse_remote_path(shared_root)
         remote_files = list_remote_files(user, host, remote_root)
         remote_rel_set = set()
         count = 0
@@ -895,18 +934,18 @@ def cmd_sync_all(**kwargs):
             if not kwargs.get('suppress_extra', False):
                 print(f"{print_prefix}✓ Already up to date")
         else:
-            print(f"✓ Synced {count} files")
+            print(f"{print_prefix}✓ Synced {count} files")
         return 0
 
     count = 0
 
     # Walk through shared directory
-    for shared_file in SHARED_ROOT.rglob('*'):
+    for shared_file in shared_root.rglob('*'):
         if not shared_file.is_file():
             continue
 
         # Reconstruct local path
-        relative = shared_file.relative_to(SHARED_ROOT)
+        relative = shared_file.relative_to(shared_root)
         if SHARE_PATH:
             local_file = SHARE_PATH / relative
         else:
@@ -970,17 +1009,18 @@ def cmd_sync_all(**kwargs):
         if not kwargs.get('suppress_extra', False):
             print(f"{print_prefix}✓ Already up to date")
     else:
-        print(f"✓ Synced {count} files")
+        print(f"{print_prefix}✓ Synced {count} files")
 
     return 0
 
 def cmd_check(local_file, **kwargs):
     """Check the status of a file"""
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_skips(cmd_check, local_path, **kwargs)
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -1051,11 +1091,12 @@ def cmd_check(local_file, **kwargs):
 def cmd_remove(local_file, **kwargs):
     """Remove file from shared location"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     local_path = Path(local_file)
     if local_path.is_dir():
         return recursive_apply_noskip(cmd_remove, local_path, **kwargs)
 
-    shared_path = get_shared_path(local_file)
+    shared_path = get_shared_path(local_file, shared_root)
     if shared_path is None:
         return 1
 
@@ -1088,7 +1129,7 @@ def cmd_remove(local_file, **kwargs):
         # Clean up empty parent directories
         try:
             parent = shared_path.parent
-            while parent != SHARED_ROOT and not any(parent.iterdir()):
+            while parent != shared_root and not any(parent.iterdir()):
                 parent.rmdir()
                 parent = parent.parent
         except:
@@ -1100,18 +1141,19 @@ def cmd_remove(local_file, **kwargs):
 def cmd_status(**kwargs):
     """Show status of entire shared directory"""
     print_prefix = kwargs.get('print_prefix', '')
-    if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Shared directory: {SHARED_ROOT} (remote)")
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
+    if isinstance(shared_root, str):
+        print(f"{print_prefix}Shared directory: {shared_root} (remote)")
         print(f"{print_prefix}Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
         print(f"{print_prefix}Cannot check status of remote shared directory")
         return 0
-    if not SHARED_ROOT.exists():
+    if not shared_root.exists():
         if not kwargs.get('suppress_critical', False):
-            print(f"{print_prefix}Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
-            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
-            print(f"{print_prefix}Created shared directory: {SHARED_ROOT}")
+            print(f"{print_prefix}Error: Shared directory does not exist\nCreating {shared_root}...")
+            shared_root.mkdir(parents=True, exist_ok=True)
+            print(f"{print_prefix}Created shared directory: {shared_root}")
         else:
-            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
+            shared_root.mkdir(parents=True, exist_ok=True)
         print(f"{print_prefix}No files tracked")
         return 0
 
@@ -1121,12 +1163,12 @@ def cmd_status(**kwargs):
     only_shared = []
 
     # Walk through shared directory
-    for shared_file in SHARED_ROOT.rglob('*'):
+    for shared_file in shared_root.rglob('*'):
         if not shared_file.is_file():
             continue
 
         # Reconstruct local path
-        relative = shared_file.relative_to(SHARED_ROOT)
+        relative = shared_file.relative_to(shared_root)
         if SHARE_PATH:
             local_file = SHARE_PATH / relative
         else:
@@ -1147,7 +1189,7 @@ def cmd_status(**kwargs):
             synced.append(local_file)
 
     total = len(synced) + len(need_push) + len(need_pull) + len(only_shared)
-    print(f"{print_prefix}Shared directory: {SHARED_ROOT}")
+    print(f"{print_prefix}Shared directory: {shared_root}")
     print(f"{print_prefix}Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
     if total > 0:
         print(f"{print_prefix}Total files tracked: {total}")
@@ -1194,13 +1236,14 @@ def cmd_status(**kwargs):
 def cmd_status_local(dirs, **kwargs):
     """Show status of local directory"""
     print_prefix = kwargs.get('print_prefix', '')
-    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
+    if isinstance(shared_root, Path) and not shared_root.exists():
         if not kwargs.get('suppress_critical', False):
-            print(f"{print_prefix}Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
-            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
-            print(f"{print_prefix}Created shared directory: {SHARED_ROOT}")
+            print(f"{print_prefix}Error: Shared directory does not exist\nCreating {shared_root}...")
+            shared_root.mkdir(parents=True, exist_ok=True)
+            print(f"{print_prefix}Created shared directory: {shared_root}")
         else:
-            SHARED_ROOT.mkdir(parents=True, exist_ok=True)
+            shared_root.mkdir(parents=True, exist_ok=True)
         print(f"{print_prefix}No files tracked")
         return 0
 
@@ -1214,18 +1257,18 @@ def cmd_status_local(dirs, **kwargs):
         # Check existence
         if not Path(dir).exists():
             if not kwargs.get('suppress_error', False):
-                print(f"Error: Local directory does not exist: {dir}")
+                print(f"{print_prefix}Error: Local directory does not exist: {dir}")
             continue
         if not Path(dir).is_dir():
             if not kwargs.get('suppress_error', False):
-                print(f"Error: Not a directory: {dir}")
+                print(f"{print_prefix}Error: Not a directory: {dir}")
             continue
         valids.append(dir)
         for local_file in Path(dir).rglob('*'):
             if not local_file.is_file():
                 continue
 
-            shared_path = get_shared_path(local_file)
+            shared_path = get_shared_path(local_file, shared_root)
             if shared_path is None:
                 continue
 
@@ -1244,13 +1287,13 @@ def cmd_status_local(dirs, **kwargs):
 
     total = len(synced) + len(need_push) + len(need_pull)
     if len(valids) == 0:
-        print("No valid local directories specified")
+        print(f"{print_prefix}No valid local directories specified")
         return 0
     elif len(valids) == 1:
-        print(f"Local directory: {valids[0]}")
+        print(f"{print_prefix}Local directory: {valids[0]}")
     else:
-        print(f"Local directories: {', '.join(valids)}")
-    print(f"Shared directory: {SHARED_ROOT}")
+        print(f"{print_prefix}Local directories: {', '.join(valids)}")
+    print(f"{print_prefix}Shared directory: {shared_root}")
     if total > 0:
         print(f"Total files tracked: {total}")
     print()
@@ -1287,24 +1330,25 @@ def cmd_status_local(dirs, **kwargs):
 def cmd_audit_all(**kwargs):
     """Audit shared directory to check on files marked as synced"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
-            print("Error: SHARE_PATH is not set. Cannot audit.")
+            print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot audit.")
         return 1
-    
-    if isinstance(SHARED_ROOT, str):
+
+    if isinstance(shared_root, str):
         print(f"{print_prefix}Audit all not supported for remote shared root")
         return 1
-    
+
     synced = []
 
     # Walk through shared directory
-    for shared_file in SHARED_ROOT.rglob('*'):
+    for shared_file in shared_root.rglob('*'):
         if not shared_file.is_file():
             continue
 
         # Reconstruct local path
-        relative = shared_file.relative_to(SHARED_ROOT)
+        relative = shared_file.relative_to(shared_root)
         if SHARE_PATH:
             local_file = SHARE_PATH / relative
         else:
@@ -1330,11 +1374,11 @@ def cmd_audit_all(**kwargs):
 
     for f in synced:
         # Audit content by comparing hashes
-        shared_path = get_shared_path(f)
+        shared_path = get_shared_path(f, shared_root)
         if shared_path is None:
             continue
         if isinstance(shared_path, str):
-            print(f"Cannot audit remote file: {f}")
+            print(f"{print_prefix}Cannot audit remote file: {f}")
             continue
         local_hash = hashlib.sha256()
         shared_hash = hashlib.sha256()
@@ -1359,7 +1403,7 @@ def cmd_audit_all(**kwargs):
             if len(match) > 5:
                 print(f"{print_prefix}  ... and {len(match) - 5} more")
             print()
-    
+
     if mismatch:
         print(f"{print_prefix}⚠ Mismatch: {len(mismatch)} files\n")
         if not kwargs.get('suppress_warning', False):
@@ -1379,28 +1423,29 @@ def cmd_audit_all(**kwargs):
 def cmd_audit(dirs, **kwargs):
     """Audit local directories to check on files marked as synced"""
     print_prefix = kwargs.get('print_prefix', '')
-    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
+    if isinstance(shared_root, Path) and not shared_root.exists():
         if not kwargs.get('suppress_critical', False):
-            print(f"Error: Shared directory does not exist\nCreating {SHARED_ROOT}...")
+            print(f"{print_prefix}Error: Shared directory does not exist\nCreating {shared_root}...")
         return 0
-    
+
     synced = []
 
     for dir in dirs:
         # Check existence
         if not Path(dir).exists():
             if not kwargs.get('suppress_error', False):
-                print(f"Error: Local directory does not exist: {dir}")
+                print(f"{print_prefix}Error: Local directory does not exist: {dir}")
             continue
         if not Path(dir).is_dir():
             if not kwargs.get('suppress_error', False):
-                print(f"Error: Not a directory: {dir}")
+                print(f"{print_prefix}Error: Not a directory: {dir}")
             continue
         for local_file in Path(dir).rglob('*'):
             if not local_file.is_file():
                 continue
 
-            shared_path = get_shared_path(local_file)
+            shared_path = get_shared_path(local_file, shared_root)
             if shared_path is None:
                 continue
 
@@ -1414,21 +1459,21 @@ def cmd_audit(dirs, **kwargs):
                 synced.append(local_file)
 
     if not synced:
-        print("No synced files found")
+        print(f"{print_prefix}No synced files found")
         return 0
     else:
         print(f"{print_prefix}Auditing {len(synced)} synced files...\n")
-    
+
     mismatch = []
     match = []
 
     for f in synced:
         # Audit content by comparing hashes
-        shared_path = get_shared_path(f)
+        shared_path = get_shared_path(f, shared_root)
         if shared_path is None:
             continue
         if isinstance(shared_path, str):
-            print(f"Cannot audit remote file: {f}")
+            print(f"{print_prefix}Cannot audit remote file: {f}")
             continue
         local_hash = hashlib.sha256()
         shared_hash = hashlib.sha256()
@@ -1473,8 +1518,9 @@ def cmd_audit(dirs, **kwargs):
 def cmd_list(**kwargs):
     """List all files in shared directory"""
     print_prefix = kwargs.get('print_prefix', '')
-    if isinstance(SHARED_ROOT, str):
-        user, host, remote_root = parse_remote_path(SHARED_ROOT)
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
+    if isinstance(shared_root, str):
+        user, host, remote_root = parse_remote_path(shared_root)
         remote_files = list_remote_files(user, host, remote_root)
         for remote_file_path in remote_files:
             if not remote_file_path.startswith(remote_root):
@@ -1486,13 +1532,13 @@ def cmd_list(**kwargs):
             else:
                 print(f"{print_prefix}{rel}")
         return 0
-    if not SHARED_ROOT.exists():
+    if not shared_root.exists():
         return 1
 
-    for shared_file in SHARED_ROOT.rglob('*'):
+    for shared_file in shared_root.rglob('*'):
         if shared_file.is_file():
-            # Show the path relative to SHARED_ROOT, and if SHARE_PATH is set, show as under SHARE_PATH
-            relative = shared_file.relative_to(SHARED_ROOT)
+            # Show the path relative to shared_root, and if SHARE_PATH is set, show as under SHARE_PATH
+            relative = shared_file.relative_to(shared_root)
             if SHARE_PATH:
                 print(f"{print_prefix}{SHARE_PATH / relative}")
             else:
@@ -1504,11 +1550,23 @@ def cmd_list(**kwargs):
 def cmd_info(**kwargs):
     """Show configuration info"""
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', None)
     print(f"{print_prefix}SHARE_PATH: {SHARE_PATH if SHARE_PATH else 'Not set'}")
-    if isinstance(SHARED_ROOT, str):
-        print(f"{print_prefix}Shared directory: {SHARED_ROOT} (remote)")
+    # Determine which roots to show
+    roots_to_show = [shared_root] if shared_root is not None else SHARED_ROOTS
+    if len(roots_to_show) == 1:
+        r = roots_to_show[0]
+        if isinstance(r, str):
+            print(f"{print_prefix}Shared directory: {r} (remote)")
+        else:
+            print(f"{print_prefix}Shared directory: {r}")
     else:
-        print(f"{print_prefix}Shared directory: {SHARED_ROOT}")
+        print(f"{print_prefix}Shared directories ({len(roots_to_show)}):")
+        for r in roots_to_show:
+            if isinstance(r, str):
+                print(f"{print_prefix}  {r} (remote)")
+            else:
+                print(f"{print_prefix}  {r}")
     print()
     if not kwargs.get('suppress_critical', False):
         printed_warning = False
@@ -1518,32 +1576,34 @@ def cmd_info(**kwargs):
         elif not SHARE_PATH.exists():
             print(f"{print_prefix}Warning: SHARE_PATH does not exist.")
             printed_warning = True
-        if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
-            print(f"{print_prefix}Warning: SHARED_ROOT does not exist.")
-            printed_warning = True
+        for r in roots_to_show:
+            if isinstance(r, Path) and not r.exists():
+                print(f"{print_prefix}Warning: Shared directory does not exist: {r}")
+                printed_warning = True
         if printed_warning:
             print()
-    
+
     if not kwargs.get('suppress_extra', False):
-        print(f"{print_prefix}To customize SHARE_PATH and SHARED_ROOT, create the following files:")
+        print(f"{print_prefix}To customize SHARE_PATH and shared roots, create the following files:")
         print(f"{print_prefix}  ~/.sharepath  - contains the absolute path for SHARE_PATH")
-        print(f"{print_prefix}  ~/.shareroot  - contains the absolute path for SHARED_ROOT")
+        print(f"{print_prefix}  ~/.shareroot  - contains one shared root per line (local path or user@host:/path)")
         print()
     return 0
 
 
 def cmd_auto(**kwargs):
     """Automatic Actions"""
-    # Cases: If SHARE_PATH or SHARED_ROOT is not set, do nothing
+    # Cases: If SHARE_PATH or shared_root is not set, do nothing
     print_prefix = kwargs.get('print_prefix', '')
+    shared_root = kwargs.get('shared_root', SHARED_ROOT)
     yes = kwargs.get('yes', False)
     if SHARE_PATH is None:
         if not kwargs.get('suppress_critical', False):
             print(f"{print_prefix}Error: SHARE_PATH is not set. Cannot perform automatic actions.")
         return 1
-    if isinstance(SHARED_ROOT, Path) and not SHARED_ROOT.exists():
+    if isinstance(shared_root, Path) and not shared_root.exists():
         if not kwargs.get('suppress_critical', False):
-            print(f"{print_prefix}Error: SHARED_ROOT does not exist. Cannot perform automatic actions.")
+            print(f"{print_prefix}Error: Shared directory does not exist. Cannot perform automatic actions.")
         return 1
     # If in home directory, run syncall
     home = Path.home()
@@ -1556,7 +1616,7 @@ def cmd_auto(**kwargs):
                 print(f"{print_prefix}No action taken.")
             return 0
     # If in shared directory, run auditall
-    if current == SHARED_ROOT:
+    if isinstance(shared_root, Path) and current == shared_root:
         if yes or ask_yes_no(f"{print_prefix}Audit all synced files in the shared directory?"):
             return cmd_audit_all(**kwargs)
         else:
@@ -1564,8 +1624,8 @@ def cmd_auto(**kwargs):
                 print(f"{print_prefix}No action taken.")
             return 0
     # If in a shared subdirectory, run audit on that directory
-    if SHARED_ROOT in current.parents:
-        relative = current.relative_to(SHARED_ROOT)
+    if isinstance(shared_root, Path) and shared_root in current.parents:
+        relative = current.relative_to(shared_root)
         local_equiv = SHARE_PATH / relative if SHARE_PATH else None
         if local_equiv and local_equiv.exists() and any(local_equiv.rglob('*')):
             if yes or ask_yes_no(f"{print_prefix}Audit all synced files in the current shared subdirectory?"):
@@ -1578,8 +1638,8 @@ def cmd_auto(**kwargs):
     if current.is_dir() and not any(current.iterdir()):
         relative = current.relative_to(SHARE_PATH) if SHARE_PATH and current.is_relative_to(SHARE_PATH) else None
         if relative:
-            shared_equiv = SHARED_ROOT / relative
-            if shared_equiv.exists() and any(shared_equiv.iterdir()):
+            shared_equiv = shared_root / relative if isinstance(shared_root, Path) else None
+            if shared_equiv and shared_equiv.exists() and any(shared_equiv.iterdir()):
                 if yes or ask_yes_no(f"{print_prefix}The current directory is empty but has contents in shared. Pull all files?"):
                     return cmd_pull(current, **kwargs)
                 else:
@@ -1589,8 +1649,8 @@ def cmd_auto(**kwargs):
     # If in a local directory but no file in shared, run push
     if SHARE_PATH and (SHARE_PATH in current.parents or current == SHARE_PATH):
         relative = current.relative_to(SHARE_PATH)
-        shared_equiv = SHARED_ROOT / relative
-        if not shared_equiv.exists() or (shared_equiv.exists() and not any(shared_equiv.iterdir())):
+        shared_equiv = shared_root / relative if isinstance(shared_root, Path) else None
+        if shared_equiv is None or not shared_equiv.exists() or (shared_equiv.exists() and not any(shared_equiv.iterdir())):
             if any(current.rglob('*')):
                 if yes or ask_yes_no(f"{print_prefix}The current local directory has files but none in shared. Push all files?"):
                     return cmd_push(current, **kwargs)
@@ -1637,8 +1697,8 @@ def cmd_config_path(new_sharepath, **kwargs):
 
 
 def cmd_config_root(new_shareroot, **kwargs):
-    """Configure SHARED_ROOT"""
-    global SHARED_ROOT
+    """Configure SHARED_ROOT (replaces all existing roots)"""
+    global SHARED_ROOT, SHARED_ROOTS
     print_prefix = kwargs.get('print_prefix', '')
     preview = kwargs.get('preview', False)
     if '@' in new_shareroot and ':' in new_shareroot:
@@ -1649,7 +1709,8 @@ def cmd_config_root(new_shareroot, **kwargs):
             print(f"{print_prefix}Error: Specified SHARED_ROOT does not exist or is not a directory: {path}")
             return 1
         SHARED_ROOT = path
-    # Save to config file
+    SHARED_ROOTS = [SHARED_ROOT]
+    # Save to config file (single line for backward compat)
     if kwargs.get('is_global', True):
         config_dir = Path.home()
     else:
@@ -1657,8 +1718,73 @@ def cmd_config_root(new_shareroot, **kwargs):
     config_file = config_dir / '.shareroot'
     if not preview:
         with open(config_file, 'w') as f:
-            f.write(str(SHARED_ROOT))
+            f.write(str(SHARED_ROOT) + '\n')
     print(f"{print_prefix}✓ SHARED_ROOT set to: {SHARED_ROOT}")
+    return 0
+
+
+def cmd_config_root_add(new_shareroot, **kwargs):
+    """Add an additional root to SHARED_ROOTS without removing existing ones"""
+    global SHARED_ROOTS
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
+    if '@' in new_shareroot and ':' in new_shareroot:
+        new_root = new_shareroot
+    else:
+        path = Path(new_shareroot).expanduser().resolve()
+        if not path.exists() or not path.is_dir():
+            print(f"{print_prefix}Error: Specified root does not exist or is not a directory: {path}")
+            return 1
+        new_root = path
+    # Check for duplicate
+    if any(str(r) == str(new_root) for r in SHARED_ROOTS):
+        print(f"{print_prefix}Root already present: {new_root}")
+        return 0
+    SHARED_ROOTS.append(new_root)
+    # Save all roots to config file, one per line
+    if kwargs.get('is_global', True):
+        config_dir = Path.home()
+    else:
+        config_dir = find_config_dir()
+    config_file = config_dir / '.shareroot'
+    if not preview:
+        with open(config_file, 'w') as f:
+            for r in SHARED_ROOTS:
+                f.write(str(r) + '\n')
+    print(f"{print_prefix}✓ Added root: {new_root} ({len(SHARED_ROOTS)} total roots)")
+    return 0
+
+
+def cmd_config_root_remove(target_root, **kwargs):
+    """Remove a specific root from SHARED_ROOTS"""
+    global SHARED_ROOT, SHARED_ROOTS
+    print_prefix = kwargs.get('print_prefix', '')
+    preview = kwargs.get('preview', False)
+    if '@' in target_root and ':' in target_root:
+        target = target_root
+    else:
+        target = str(Path(target_root).expanduser().resolve())
+    # Find matching root
+    new_roots = [r for r in SHARED_ROOTS if str(r) != target]
+    if len(new_roots) == len(SHARED_ROOTS):
+        print(f"{print_prefix}Error: Root not found: {target_root}")
+        return 1
+    if len(new_roots) == 0:
+        print(f"{print_prefix}Error: Cannot remove the last root. Use 'config root <path>' to replace it instead.")
+        return 1
+    SHARED_ROOTS = new_roots
+    SHARED_ROOT = SHARED_ROOTS[0]
+    # Save updated list to config file
+    if kwargs.get('is_global', True):
+        config_dir = Path.home()
+    else:
+        config_dir = find_config_dir()
+    config_file = config_dir / '.shareroot'
+    if not preview:
+        with open(config_file, 'w') as f:
+            for r in SHARED_ROOTS:
+                f.write(str(r) + '\n')
+    print(f"{print_prefix}✓ Removed root: {target} ({len(SHARED_ROOTS)} remaining)")
     return 0
 
 
@@ -1685,7 +1811,8 @@ def cmd_config_global_override(**kwargs):
     if not shareroot_file.exists():
         if not preview:
             with open(shareroot_file, 'w') as f:
-                f.write(str(SHARED_ROOT))
+                for r in SHARED_ROOTS:
+                    f.write(str(r) + '\n')
     if not preview:
         print(f"{print_prefix}✓ Override config updated in current directory.")
     return 0
@@ -1718,14 +1845,22 @@ def main():
                 epilog="""
 Customization:
     - To set your local root, create ~/.sharepath containing the absolute path.
-    - To set your shared root, create ~/.shareroot containing the absolute path.
-    - Only files under SHARE_PATH are managed; they are mapped to SHARED_ROOT
+    - To set your shared root(s), create ~/.shareroot with one root per line.
+      Each line is either an absolute local path or user@host:/path for SSH.
+    - Only files under SHARE_PATH are managed; they are mapped to each shared root
         preserving their relative path under SHARE_PATH.
 
+Multiple roots:
+    - Add multiple lines to ~/.shareroot to sync with multiple shared locations.
+    - Commands like put, push, pull, sync, status operate on each root independently.
+    - When multiple roots are configured, output is prefixed with [root path].
+    - Use 'config root add <path>' to append a root without replacing existing ones.
+    - Use 'config root <path>' to replace all roots with a single root.
+
 Remote (SSH):
-    - Set SHARED_ROOT to user@host:/path to share over SSH.
+    - Set a shared root to user@host:/path to share over SSH.
     - Most commands are supported, including pushall, pullall, syncall, and list.
-    - 'status' and 'auditall' are not supported for remote SSH paths.
+    - 'status' and 'auditall' are not supported for remote SSH roots.
     - Passwordless SSH key authentication is required for remote operations.
 
 Commands:
@@ -1734,7 +1869,9 @@ Commands:
   auto                       Perform automatic actions based on current directory context.
   list                       List all files in shared directory.
   config path <path>         Set SHARE_PATH to specified path. This is the local root.
-  config root <path>         Set SHARED_ROOT to specified path. This is the shared root.
+  config root <path>         Set shared root (replaces all existing roots).
+  config root add <path>     Add an additional shared root without removing existing ones.
+  config root remove <path>  Remove a specific shared root (must have at least one remaining).
   config show                Show current configuration.
   config override            Override global config files with a .shareoverride in current directory.
   config remove              Remove global config overrides stored in .shareoverride from current directory.
@@ -1770,7 +1907,7 @@ Examples:
 
     parser.add_argument('command', help='Command to execute')
     parser.add_argument('file', nargs='*', help='File path(s) (required for most commands)')
-    parser.add_argument('-v', '--version', action='version', version='share utility version 1.6')
+    parser.add_argument('-v', '--version', action='version', version='share utility version 1.7')
     # Flags, --suppress-extra, --suppress-error, --suppress-critical:
     parser.add_argument('-next', '-sext', '--suppress-extra', '--no-extra', action='store_true', help='Suppress extra informational messages')
     parser.add_argument('-nerr', '-serr', '--suppress-error', '--no-error', action='store_true', help='Suppress error messages')
@@ -1816,11 +1953,23 @@ Examples:
         yes=yes,
     )
 
+    def dispatch_with_roots(run_fn):
+        """Call run_fn once per root. run_fn accepts an opts dict and returns int."""
+        if len(SHARED_ROOTS) == 1:
+            return run_fn(dict(opts, shared_root=SHARED_ROOTS[0]))
+        overall = 0
+        for root in SHARED_ROOTS:
+            label = str(root)
+            per_opts = dict(opts, shared_root=root,
+                            print_prefix=opts.get('print_prefix', '') + f"[{label}] ")
+            overall += run_fn(per_opts)
+        return 0 if overall == 0 else 1
+
     # Commands that don't require a file argument
     if command == 'status' and len(file_paths) == 0:
-        return cmd_status(**opts)
+        return dispatch_with_roots(lambda o: cmd_status(**o))
     elif command == 'version':
-        print(f"{print_prefix}share utility version 1.6")
+        print(f"{print_prefix}share utility version 1.7")
         return 0
     elif command == 'author':
         print(f"{print_prefix}Created by William Wu")
@@ -1840,6 +1989,18 @@ Examples:
                 return 1
             return cmd_config_path(path_arg)
         elif subcommand == 'root':
+            if len(file_paths) > 1 and file_paths[1].lower() == 'add':
+                path_arg = ' '.join(file_paths[2:])
+                if not path_arg:
+                    print(f"{print_prefix}Error: 'config root add' requires a path argument")
+                    return 1
+                return cmd_config_root_add(path_arg)
+            elif len(file_paths) > 1 and file_paths[1].lower() in ('remove', 'rm'):
+                path_arg = ' '.join(file_paths[2:])
+                if not path_arg:
+                    print(f"{print_prefix}Error: 'config root remove' requires a path argument")
+                    return 1
+                return cmd_config_root_remove(path_arg)
             path_arg = ' '.join(file_paths[1:])  # In case path contains spaces
             if not path_arg:
                 print(f"{print_prefix}Error: 'config root' requires a path argument")
@@ -1866,6 +2027,18 @@ Examples:
                     return 1
                 return cmd_config_path(path_arg, is_global=True)
             elif subsubcommand == 'root':
+                if len(file_paths) > 2 and file_paths[2].lower() == 'add':
+                    path_arg = ' '.join(file_paths[3:])
+                    if not path_arg:
+                        print(f"{print_prefix}Error: 'config global root add' requires a path argument")
+                        return 1
+                    return cmd_config_root_add(path_arg, is_global=True)
+                elif len(file_paths) > 2 and file_paths[2].lower() in ('remove', 'rm'):
+                    path_arg = ' '.join(file_paths[3:])
+                    if not path_arg:
+                        print(f"{print_prefix}Error: 'config global root remove' requires a path argument")
+                        return 1
+                    return cmd_config_root_remove(path_arg, is_global=True)
                 if not path_arg:
                     print(f"{print_prefix}Error: 'config global root' requires a path argument")
                     return 1
@@ -1893,19 +2066,19 @@ Examples:
             print(f"{print_prefix}Error: Unknown config sub-command '{subcommand}'")
             return 1
     elif command == 'pushall':
-        return cmd_push_all(**opts)
+        return dispatch_with_roots(lambda o: cmd_push_all(**o))
     elif command == 'pullall':
-        return cmd_pull_all(**opts)
+        return dispatch_with_roots(lambda o: cmd_pull_all(**o))
     elif command == 'syncall':
-        return cmd_sync_all(**opts)
+        return dispatch_with_roots(lambda o: cmd_sync_all(**o))
     elif command == 'list':
-        return cmd_list(**opts)
+        return dispatch_with_roots(lambda o: cmd_list(**o))
     elif command == 'auditall':
-        return cmd_audit_all(**opts)
+        return dispatch_with_roots(lambda o: cmd_audit_all(**o))
     elif command == 'info':
         return cmd_info(**opts)
     elif command == 'auto':
-        return cmd_auto(**opts)
+        return dispatch_with_roots(lambda o: cmd_auto(**o))
     elif command == 'show':
         print(f"{print_prefix}Error: Unknown command 'show'. Did you mean 'config show'?")
         return 1
@@ -1970,10 +2143,10 @@ Examples:
               f"{print_prefix}'share' does not require creating files; simply run 'put' or 'push' to add files to shared.")
         return 1
     elif command == 'status' and len(file_paths) > 0:
-        return cmd_status_local(file_paths, **opts)
+        return dispatch_with_roots(lambda o: cmd_status_local(file_paths, **o))
 
     # Dispatch to appropriate command
-    commands = {
+    file_commands = {
         'put': cmd_put,
         'push': cmd_push,
         'get': cmd_get,
@@ -1982,34 +2155,42 @@ Examples:
         'check': cmd_check,
         'rm': cmd_remove,
         'remove': cmd_remove,
-        'audit': cmd_audit,
         'ask': cmd_ask,
         'touch': cmd_ask,
     }
+    dir_commands = {
+        'audit': cmd_audit,
+    }
 
-    if command not in commands:
+    if command not in file_commands and command not in dir_commands:
         if path_exists_and_valid(command) and command not in ['.', '..']:
-            return cmd_sync(command, **opts)
+            return dispatch_with_roots(lambda o: cmd_sync(command, **o))
         print(f"{print_prefix}Error: Unknown command '{command}'")
         print(f"{print_prefix}Use 'share --help' for usage information")
         return 1
-    
+
     if not file_paths:
         print(f"{print_prefix}Error: '{command}' require at least one file path argument")
         return 1
 
+    if command in dir_commands:
+        # dir-argument commands (audit) receive the full file_paths list
+        return dispatch_with_roots(lambda o: dir_commands[command](file_paths, **o))
+
     if len(file_paths) > 1:
-        # Multiple files
-        res = 0
-        for f in file_paths:
-            res += commands[command](f, **opts)
-        if res != 0:
-            print(f"{print_prefix}⚠ '{command}' completed with {res} errors")
-            return 1
-        return 0
+        # Multiple files: iterate files per root
+        def run_multi_files(o):
+            res = 0
+            for f in file_paths:
+                res += file_commands[command](f, **o)
+            if res != 0:
+                print(f"{o.get('print_prefix', '')}⚠ '{command}' completed with {res} errors")
+                return 1
+            return 0
+        return dispatch_with_roots(run_multi_files)
     else:
         # Single file
-        return commands[command](file_paths[0], **opts)
+        return dispatch_with_roots(lambda o: file_commands[command](file_paths[0], **o))
 
 
 if __name__ == "__main__":
