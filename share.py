@@ -1143,9 +1143,90 @@ def cmd_status(**kwargs):
     print_prefix = kwargs.get('print_prefix', '')
     shared_root = kwargs.get('shared_root', SHARED_ROOT)
     if isinstance(shared_root, str):
+        user, host, remote_root = parse_remote_path(shared_root)
         print(f"{print_prefix}Shared directory: {shared_root} (remote)")
         print(f"{print_prefix}Local root: {SHARE_PATH if SHARE_PATH else 'Not set'}")
-        print(f"{print_prefix}Cannot check status of remote shared directory")
+
+        remote_files = list_remote_files(user, host, remote_root)
+        if not remote_files:
+            print(f"{print_prefix}No files tracked")
+            return 0
+
+        synced = []
+        need_push = []
+        need_pull = []
+        only_shared = []
+
+        for remote_file in remote_files:
+            # Reconstruct local path from remote path
+            if remote_root and remote_file.startswith(remote_root):
+                relative = remote_file[len(remote_root):].lstrip('/')
+            else:
+                relative = remote_file.lstrip('/')
+
+            if SHARE_PATH:
+                local_file = SHARE_PATH / relative
+            else:
+                local_file = Path(relative)
+
+            if not local_file.exists():
+                only_shared.append((local_file, remote_file))
+                continue
+
+            local_mtime = local_file.stat().st_mtime
+            shared_mtime = get_remote_mtime(user, host, remote_file)
+
+            if shared_mtime is None:
+                only_shared.append((local_file, remote_file))
+                continue
+
+            if file_is_newer(local_mtime, shared_mtime):
+                need_push.append(local_file)
+            elif file_is_newer(shared_mtime, local_mtime):
+                need_pull.append(local_file)
+            else:
+                synced.append(local_file)
+
+        total = len(synced) + len(need_push) + len(need_pull) + len(only_shared)
+        if total > 0:
+            print(f"{print_prefix}Total files tracked: {total}")
+        print()
+
+        if synced:
+            print(f"{print_prefix}✓ Synced: {len(synced)} files")
+            if not kwargs.get('suppress_extra', False):
+                for f in synced[:5]:
+                    print(f"{print_prefix}  {f}")
+                if len(synced) > 5:
+                    print(f"{print_prefix}  ... and {len(synced) - 5} more")
+                print()
+
+        if need_push:
+            print(f"{print_prefix}⚠ Need push (local newer): {len(need_push)} files")
+            if not kwargs.get('suppress_extra', False):
+                for f in need_push:
+                    print(f"{print_prefix}  {f}")
+                print()
+
+        if need_pull:
+            print(f"{print_prefix}⚠ Need pull (shared newer): {len(need_pull)} files")
+            if not kwargs.get('suppress_extra', False):
+                for f in need_pull:
+                    print(f"{print_prefix}  {f}")
+                print()
+
+        if only_shared:
+            print(f"{print_prefix}⊘ Only in shared: {len(only_shared)} files")
+            if not kwargs.get('suppress_extra', False):
+                for local_f, _ in only_shared[:5]:
+                    print(f"{print_prefix}  {local_f}")
+                if len(only_shared) > 5:
+                    print(f"{print_prefix}  ... and {len(only_shared) - 5} more")
+                print()
+
+        if not (synced or need_push or need_pull or only_shared):
+            print(f"{print_prefix}No files tracked")
+
         return 0
     if not shared_root.exists():
         if not kwargs.get('suppress_critical', False):
